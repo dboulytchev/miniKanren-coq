@@ -13,14 +13,43 @@ Inductive term : Set :=
 (* a constant           *) | Cst : name -> term
 (* a binary constructor *) | Con : name -> term -> term -> term.
 
-(* Occurs property *)
-Fixpoint occurs (n : name) (t : term) : bool :=
+(* Set union on lists *)
+Definition union (l1 l2 : list name) : list name := nodup eq_nat_dec (l1 ++ l2).
+
+(* Some lemmas for lists as sets *)
+Lemma union_NoDup: forall (l1 l2 : list name), NoDup (union l1 l2).
+Proof. admit. Admitted.
+
+Lemma union_In: forall (l1 l2 : list name) (n : name), In n (union l1 l2) <-> In n l1 \/ In n l2.
+Proof. admit. Admitted.
+                       
+Lemma lt_length:
+  forall (l1 l2 : list name),
+    NoDup l1 -> NoDup l2 -> (forall n, In n l1 -> In n l2) -> (exists n, In n l2 /\ ~ (In n l1)) -> length l1 < length l2.
+Proof. admit. Admitted.
+    
+(* Free variables *)
+Fixpoint fv (t : term) : list name :=
   match t with
-  | Var n1    => if eq_nat_dec n1 n then true else false
-  | Con _ l r => orb (occurs n l) (occurs n r)
-  | _         => false
+  | Var x     => [x]
+  | Cst _     => []
+  | Con _ x y => union (fv x) (fv y)
   end.
 
+(* fv returns NoDup *)
+Lemma fv_NoDup: forall t,  NoDup (fv t).
+Proof. admit. Admitted.
+
+(* Occurs property *)
+Fixpoint occurs (n : name) (t : term) : bool :=
+  if find (fun x => if eq_nat_dec x n then true else false) (fv t)
+  then true
+  else false.
+
+(* In follows from occurs *)
+Lemma occurs_In: forall t n, occurs n t = true <-> In n (fv t).
+Proof. admit. Admitted.
+  
 (******************** Substitutions **********************)
 (* Substitution *)
 Definition subst : Type := list (name * term).
@@ -43,6 +72,10 @@ Fixpoint apply (s : subst) (t : term) : term :=
   | Con n l r => Con n (apply s l) (apply s r)
   end.
 
+(* Free variables in the result of substitution application *)
+Lemma apply_fv: forall t s n m,  In m (fv (apply [(n, s)] t)) -> In m (fv s) \/ In m (fv t).
+Proof. admit. Admitted.
+
 (* Generality *)
 Definition more_general (m s : subst) : Prop :=
   exists (s' : subst), forall (t : term), apply s t = apply s' (apply m t).
@@ -54,6 +87,7 @@ Definition unifier (s : subst) (t1 t2 : term) : Prop := apply s t1 = apply s t2.
 Definition mgu (m : subst) (t1 t2 : term) : Prop :=
   unifier m t1 t2 /\ forall (s : subst), unifier s t1 t2 -> more_general m s.
 
+(*
 (******************** Well-formed Substitutions ***********)
 (* Substitution welformedness *)
 Definition subst_wf (s : subst) : Prop :=
@@ -90,7 +124,7 @@ Proof.
     destruct (eq_nat_dec n n0). inversion H. subst. auto. inversion H.
 Qed.
  *)
-
+*)
 Inductive outcome : Set :=
 | Fail
 | Fine
@@ -98,21 +132,16 @@ Inductive outcome : Set :=
 
 Definition create (n: name) (t: term) : outcome :=
   if occurs n t then Fail else Subst n t.
-(*.
-  remember (occurs n t). destruct b.
-  * exact Fail.
-  * symmetry in Heqb. exact (Subst n t Heqb).
-Defined.
-  *)         
+
 (* Find a difference in a couple of terms and try to make a unification step *)
-Fixpoint delta (t1 t2 : term) : outcome :=
+Fixpoint unification_step (t1 t2 : term) : outcome :=
   match (t1, t2) with
   | (Cst n1      , Cst n2      ) => if eq_nat_dec n1 n2 then Fine else Fail 
   | (Con n1 l1 r1, Con n2 l2 r2) => if eq_nat_dec n1 n2
                                     then
-                                      match delta l1 l2 with
+                                      match unification_step l1 l2 with
                                       | Fail => Fail
-                                      | Fine => delta r1 r2
+                                      | Fine => unification_step r1 r2
                                       | res  => res
                                       end
                                     else Fail
@@ -122,40 +151,45 @@ Fixpoint delta (t1 t2 : term) : outcome :=
   | (_           , _           ) => Fail
   end.
 
-(* A distance between terms *)
-Fixpoint distance (t1 t2 : term) : nat :=
-  match (t1, t2) with
-  | (Cst n1      , Cst n2      ) => if eq_nat_dec n1 n2 then 0 else 1 
-  | (Con n1 l1 r1, Con n2 l2 r2) => if eq_nat_dec n1 n2
-                                    then distance l1 l2 + distance r1 r2
-                                    else 1
-  | (Var n1      , Var n2      ) => if eq_nat_dec n1 n2 then 0 else 1
-  | (_           , _           ) => 1
-  end.
+Definition unification_step_ok t1 t2 n s := unification_step t1 t2 = Subst n s.
 
-Lemma apply_eq: forall (t1 t2 : term) (n : name), occurs n t1 = false -> apply [(n, t2)] t1 = t1.
+Lemma unification_step_fv: forall t1 t2 s n ,
+    unification_step_ok t1 t2 n s -> (forall m, In m (fv s) -> In m (fv t1) \/ In m (fv t2)).
+Proof. admit. Admitted. 
+
+Lemma unification_step_subst_wf:
+  forall t1 t2 s n, unification_step_ok t1 t2 n s -> ~ In n (fv s).
 Proof. admit. Admitted.
 
-Lemma apply_empty: forall (t1 : term), apply [] t1 = t1.
+Lemma unification_step_subst_occurs:
+  forall t1 t2 s n, unification_step_ok t1 t2 n s -> In n (fv t1) \/ In n (fv t2).
 Proof. admit. Admitted.
 
-Lemma distance_eq_zero: forall (t : term), distance t t = 0.
+Lemma unification_step_subst_elims: forall s t n, In n (fv (apply [(n, s)] t)) -> In n (fv s).
 Proof. admit. Admitted.
-                       
-Lemma distance_decrease:
-  forall (t1 t2 t: term) (n: name),
-    delta t1 t2 = Subst n t -> distance t1 t2 > distance (apply (trivial n t) t1) (apply (trivial n t) t2).
+  
+Lemma unification_step_decreases_fv:
+  forall t1 t2 s n,
+    unification_step_ok t1 t2 n s ->
+    length (union (fv (apply [(n, s)] t1)) (fv (apply [(n, s)] t2))) < length (union (fv t1) (fv t2)).
 Proof.
-  intros. induction t1.
-  * unfold delta in H. unfold create in H. destruct t2. destruct (eq_nat_dec n0 n1). inversion H.
-    destruct (occurs n0 (Var n1)). inversion H. inversion H. subst. unfold trivial. unfold empty. unfold extend. unfold apply.
-    simpl. destruct (eq_nat_dec n n1). rewrite e in n2. exfalso. auto. destruct (eq_nat_dec n n). unfold distance.
-    destruct (eq_nat_dec n1 n1). omega. exfalso. auto. exfalso. auto.
-    unfold occurs in H. inversion H.  unfold trivial. unfold empty. unfold extend. unfold apply.
-    simpl. destruct (eq_nat_dec n n). simpl. destruct (eq_nat_dec n1 n1). omega. exfalso. auto. exfalso. auto.
-    destruct (occurs n0 (Con n1 t2_1 t2_2)) eqn:D. inversion H. inversion H. unfold trivial. unfold empty. unfold extend.
-    apply apply_eq with (t2:=apply [] (Con n1 t2_1 t2_2)) in D. subst n0. rewrite D. rewrite apply_empty.
-    unfold apply. unfold image. destruct (eq_nat_dec n n). rewrite distance_eq_zero. unfold distance. omega. exfalso. auto.
-  * admit.
-  * 
-    
+  intros t1 t2 s n USok. 
+  apply lt_length; try apply union_NoDup.
+  * intros n0 InH. apply union_In in InH. inversion_clear InH.
+    + apply apply_fv in H. inversion_clear H.
+      - apply unification_step_fv with (m:=n0) in USok.
+        { apply union_In. auto. }
+        auto.
+      - apply union_In. left. auto.
+    + apply apply_fv in H. inversion_clear H.
+      - apply unification_step_fv with (m:=n0) in USok.
+        { apply union_In. auto. }
+        auto.
+      - apply union_In. right. auto.
+  * exists n. split.
+    + apply unification_step_subst_occurs in USok. apply union_In. auto.
+    + unfold not. intro H. apply union_In in H. inversion_clear H as [H0 | H0];
+      apply unification_step_subst_elims in H0;
+      apply unification_step_subst_wf in USok; auto.
+Qed.
+      
