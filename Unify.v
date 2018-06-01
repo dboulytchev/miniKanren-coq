@@ -29,8 +29,22 @@ Qed.
 
 Lemma lt_length:
   forall (l1 l2 : list name),
-    NoDup l1 -> NoDup l2 -> (forall n, In n l1 -> In n l2) -> (exists n, In n l2 /\ ~ (In n l1)) -> length l1 < length l2.
-Proof. admit. Admitted.
+    NoDup l1 -> NoDup l2 -> incl l1 l2 -> (exists n, In n l2 /\ ~ (In n l1)) -> length l1 < length l2.
+Proof.
+  intros. destruct H2. destruct H2. apply in_split in H2.
+  destruct H2. destruct H2. subst.
+  rewrite app_length. simpl.
+  assert (length l1 <= length (x0 ++ x1)).
+  { apply NoDup_incl_length.
+    * assumption.
+    * unfold incl. intros. assert (H2_copy := H2).
+      apply H1 in H2. apply in_app_or in H2. destruct H2.
+      + apply in_or_app. left. assumption.
+      + inversion H2.
+        - exfalso. apply H3. congruence.
+        - apply in_or_app. right. assumption. }
+  rewrite app_length in H2. omega.
+Qed.
 
 (* Free variables *)
 Fixpoint fv (t : term) : list name :=
