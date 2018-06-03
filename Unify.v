@@ -2,6 +2,7 @@ Require Import List.
 Import ListNotations.
 Require Import Arith.
 Require Import Omega.
+Require Export Coq.Structures.OrderedTypeEx.
 
 (************************* Terms *************************)
 (* Name of entities *)
@@ -98,7 +99,6 @@ Proof.
             + assumption. }
 Qed.
 
-
 (******************** Substitutions **********************)
 (* Substitution *)
 Definition subst : Type := list (name * term).
@@ -139,6 +139,10 @@ Proof.
       - right. unfold fv. fold fv. apply union_In. right. assumption.
 Qed.
 
+(* Composition *)
+Fixpoint compose (s1 s2 : subst) : subst :=
+  List.map (fun p => (fst p, apply s2 (snd p))) s1 ++ s2.
+
 (* Generality *)
 Definition more_general (m s : subst) : Prop :=
   exists (s' : subst), forall (t : term), apply s t = apply s' (apply m t).
@@ -150,44 +154,6 @@ Definition unifier (s : subst) (t1 t2 : term) : Prop := apply s t1 = apply s t2.
 Definition mgu (m : subst) (t1 t2 : term) : Prop :=
   unifier m t1 t2 /\ forall (s : subst), unifier s t1 t2 -> more_general m s.
 
-(*
-(******************** Well-formed Substitutions ***********)
-(* Substitution welformedness *)
-Definition subst_wf (s : subst) : Prop :=
-  forall (m n : name), forall (t : term), In m (domain s) -> image s n = Some t -> occurs m t = false.
-
-(* Well-formed substitution *)
-Definition swbst := {s : subst | subst_wf s}.
-
-(* Coercion *)
-Definition coerce (T : Type) (P : subst -> T) (s: swbst) : T :=
-  match s with exist l _ => P l end.
-             
-(* Empty well-formed substitution *)
-Definition empty : subst := [].
-(*
-Proof.
-  exists []. unfold subst_wf. intros. simpl in H. inversion H.
-Qed.
-*)
-(* Extending a well-fromed substitution *)
-Definition extend (b : subst) (n : name) (t : term) := (n, apply b t) :: b.
-
-(* Singleton substitution *)
-Definition trivial (n : name) (t : term) : subst := extend empty n t.
-(*
-(* Singleton well-formed substitution construction *)
-Definition trivial (n : name) (t : term) : option swbst.
-Proof.
-  remember (occurs n t). destruct b.
-  * exact None.
-  * remember [(n, t)]. assert (A: image l n = Some t). rewrite Heql. simpl.
-    destruct (eq_nat_dec n n). auto. exfalso. auto. refine (Some _). exists l.
-    rewrite Heql. unfold subst_wf. intros. simpl in H.
-    destruct (eq_nat_dec n n0). inversion H. subst. auto. inversion H.
-Qed.
- *)
-*)
 Inductive outcome : Set :=
 | Fail
 | Fine
@@ -360,3 +326,72 @@ Proof.
       apply unification_step_subst_elims in H0;
       apply unification_step_subst_wf in USok; auto.
 Qed.
+
+Definition terms := (term * term)%type.
+
+Definition fvOrder (t : terms) := length (union (fv (fst t)) (fv (snd t))).
+
+Definition fvOrderRel (t p : terms) := fvOrder t < fvOrder p.
+  
+Hint Constructors Acc.
+ 
+Theorem fvOrder_wf: well_founded fvOrderRel.
+Proof.
+  assert (fvOrder_wf': forall (size: nat) (t: terms), fvOrder t < size -> Acc fvOrderRel t).
+    {unfold fvOrderRel. induction size.
+     * intros. inversion H.
+     * intros. constructor. intros. apply IHsize. omega.
+    }
+  red; intro; eapply fvOrder_wf'; eauto.
+Defined.
+
+Definition unify' : terms -> option subst.
+  refine (
+    Fix fvOrder_wf (fun _ => option subst)
+      (fun (ts    : terms)
+           (unify : forall ts' : terms, fvOrderRel ts' ts -> option subst) =>
+         let t1 := fst ts in
+         let t2 := snd ts in
+         let r  := unification_step t1 t2 in
+         match r as r' return r = r' -> option subst with
+         | Fail      => fun _ => None
+         | Fine      => fun _ => Some []
+         | Subst n t =>
+             fun Heq =>
+               let t1' := apply [(n, t)] t1 in
+               let t2' := apply [(n, t)] t2 in
+               match unify (t1', t2') _ with
+               | None   => None
+               | Some s => Some (compose [(n, t)] s)
+               end
+         end (eq_refl r)
+      )
+  ). apply unification_step_decreases_fv. assumption.
+Defined.
+
+Definition unify t1 t2 := unify' (t1, t2).
+
+Example test1: unify (Cst 1)                 (Cst 2)                 = None.                          Proof. reflexivity. Qed.
+Example test2: unify (Cst 1)                 (Cst 1)                 = Some [].                       Proof. reflexivity. Qed.
+Example test3: unify (Var 1)                 (Var 2)                 = Some [(1, Var 2)].             Proof. reflexivity. Qed.
+Example test4: unify (Var 1)                 (Var 1)                 = Some [].                       Proof. reflexivity. Qed.
+Example test5: unify (Con 1 (Var 1) (Var 2)) (Con 2 (Var 1) (Var 2)) = None.                          Proof. reflexivity. Qed.
+Example test6: unify (Con 1 (Var 1) (Var 2)) (Con 1 (Var 1) (Var 2)) = Some [].                       Proof. reflexivity. Qed.
+Example test7: unify (Con 1 (Var 1) (Var 1)) (Con 1 (Var 1) (Var 2)) = Some [(1, Var 2)].             Proof. reflexivity. Qed.
+Example test8: unify (Con 1 (Cst 1) (Var 2)) (Con 1 (Var 1) (Cst 2)) = Some [(1, Cst 1); (2, Cst 2)]. Proof. reflexivity. Qed.
+
+Lemma unify_unifies:
+  forall (t1 t2 : term) (s : subst), unify t1 t2 = Some s -> unifier s t1 t2.
+Proof.admit. Admitted.
+
+Lemma non_unifiable_not_unify:
+  forall (t1 t2 : term), unify t1 t2 = None -> forall s,  ~ (unifier s t1 t2).
+Proof. admit. Admitted.
+
+Theorem unify_mgu:
+  forall (t1 t2 : term) (s : subst), unify t1 t2 = Some s -> mgu s t1 t2.
+Proof. admit. Admitted.
+
+
+
+
