@@ -382,7 +382,7 @@ Example test8: unify (Con 1 (Cst 1) (Var 2)) (Con 1 (Var 1) (Cst 2)) = Some [(1,
 
 Lemma unify_unifies:
   forall (t1 t2 : term) (s : subst), unify t1 t2 = Some s -> unifier s t1 t2.
-Proof.admit. Admitted.
+Proof. admit. Admitted.
 
 Lemma non_unifiable_not_unify:
   forall (t1 t2 : term), unify t1 t2 = None -> forall s,  ~ (unifier s t1 t2).
