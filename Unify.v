@@ -3,6 +3,8 @@ Import ListNotations.
 Require Import Arith.
 Require Import Omega.
 Require Export Coq.Structures.OrderedTypeEx.
+Require Import Eqdep.
+Require Import Program.
 
 (************************* Terms *************************)
 (* Name of entities *)
@@ -353,8 +355,8 @@ Definition unify' : terms -> option subst.
          let t1 := fst ts in
          let t2 := snd ts in
          let r  := unification_step t1 t2 in
-         match r as r' return r = r' -> option subst with
-         | Fail      => fun _ => None
+         match r as r' return (r = r' -> option subst) with
+         | Fail      => fun _ => None   
          | Fine      => fun _ => Some []
          | Subst n t =>
              fun Heq =>
@@ -366,7 +368,7 @@ Definition unify' : terms -> option subst.
                end
          end (eq_refl r)
       )
-  ). apply unification_step_decreases_fv. assumption.
+    ). apply unification_step_decreases_fv. assumption.
 Defined.
 
 Definition unify t1 t2 := unify' (t1, t2).
@@ -380,9 +382,20 @@ Example test6: unify (Con 1 (Var 1) (Var 2)) (Con 1 (Var 1) (Var 2)) = Some []. 
 Example test7: unify (Con 1 (Var 1) (Var 1)) (Con 1 (Var 1) (Var 2)) = Some [(1, Var 2)].             Proof. reflexivity. Qed.
 Example test8: unify (Con 1 (Cst 1) (Var 2)) (Con 1 (Var 1) (Cst 2)) = Some [(1, Cst 1); (2, Cst 2)]. Proof. reflexivity. Qed.
 
+Check well_founded_induction.
+
 Lemma unify_unifies:
   forall (t1 t2 : term) (s : subst), unify t1 t2 = Some s -> unifier s t1 t2.
-Proof. admit. Admitted.
+Proof. 
+  intros. red. generalize dependent H.
+  remember (fun p => unify (fst p) (snd p) = Some s -> apply s (fst p) = apply s (snd p)) as P.
+  assert (P (t1, t2)).
+  * apply well_founded_induction with (R := fvOrderRel).
+    + apply fvOrder_wf.
+    + subst. intro x. destruct x. simpl. intros.
+      unfold unify in H0. unfold unify' in H0. unfold Fix in H0. 
+      simpl in H0.
+  * subst. assumption.
 
 Lemma non_unifiable_not_unify:
   forall (t1 t2 : term), unify t1 t2 = None -> forall s,  ~ (unifier s t1 t2).
