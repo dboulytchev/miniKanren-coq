@@ -29,7 +29,7 @@ Fixpoint occurs (n : name) (t : term) : bool :=
 
 (******************** Substitutions **********************)
 (* Substitution *)
-Definition subst : Type := list (name * term).
+Definition subst : Set := list (name * term).
 
 Definition empty_subst : subst := [].
 
