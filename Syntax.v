@@ -11,31 +11,30 @@ Inductive goal : Set :=
 (* fresh       *) | Fresh  : (name -> goal) -> goal
 (* invoke      *) | Invoke : name -> list term -> goal.
 
-Definition rel  : Set := @sigT nat (fun n => forall (args : list term), n = length args -> goal).  
-Definition def  : Set := name * rel. 
+(* N-ary function type from term to goals *)
+Fixpoint n_ary (n : nat) : Set :=
+  match n with
+  | 0   => goal
+  | S k => term -> n_ary k
+  end.
+
+(* Application primitive *)
+Definition n_apply (n : nat) (f : n_ary n) (args : list term) : length args = n -> goal. admit. Admitted.
+
+(* rel is a body of a relational symbol *)
+Inductive rel : Set :=
+  Def : forall n, n_ary n -> rel.
+                    
+(* Some checks *)
+Definition d0 : rel := Def 0 (           Unify (Var 0) (Var 0)).
+Definition d1 : rel := Def 1 (fun t   => Unify t       (Var 0)).
+Definition d2 : rel := Def 2 (fun t q => Unify t       q      ).
+
+(* def is a definition of a relational symbol *)
+Definition def : Set := name * rel.
+
+(* spec is a list of definitions *)
 Definition spec : Set := list def.
-
-Definition a : rel.
-  unfold rel. exists 0. intros. exact (Unify (Var 0) (Var 0)).
-Defined.
-
-Print a.
-
-Lemma any_n: forall n, {l : list term & length l = n}.
-Proof.
-  intros.
-  induction n. exists []. auto. inversion IHn. exists ((Var 0) :: x). simpl. auto.
-Qed.
-     
-Definition x : rel -> goal.
-  intro. inversion H. pose (any_n x). inversion s. eauto.
-Defined.
-
-Print x.
- 
-  
-  
-  
 
 (* Partial state *) 
 Inductive state' : Set :=
@@ -64,9 +63,8 @@ Section Transitions.
   | DisjS        : forall g1 g2       s n, eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
   | ConjS        : forall g1 g2       s n, eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
   | FreshS       : forall fg          s n, eval_step (Leaf (Fresh fg) s n) Step (State (Leaf (fg n) s (S n)))
-  | InvokeS      : forall f rf args e m s n, find (fun x => Nat.eqb (fst x) f) P = Some (f, e) ->
-                                             length args = m ->
-                                             eval_step (Leaf (Invoke f args) s n) Step (State (Leaf (rf args) s n)).
+  | InvokeS      : forall f args (rf : n_ary (length args)) s n, find (fun x => Nat.eqb (fst x) f) P = Some (f, Def (length args) rf) ->
+                                                                 eval_step (Leaf (Invoke f args) s n) Step (State (Leaf (n_apply (length args) rf args (eq_refl (length args))) s n)).
 
 End Transitions.
                                  
