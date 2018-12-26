@@ -13,6 +13,21 @@ Inductive term : Set :=
 (* a constant           *) | Cst : name -> term
 (* a binary constructor *) | Con : name -> term -> term -> term.
 
+Fixpoint fv_term (t : term) : list name :=
+  match t with
+  | Var n     => [n]
+  | Cst _     => []
+  | Con _ l r => fv_term l ++ fv_term r
+  end.
+
+Definition fv_terms (ts : list term) : list name :=
+  fold_left (fun acc t => acc ++ fv_term t) ts [].
+
+Lemma free_var (t : term) : exists x, ~ In x (fv_term t).
+Proof.
+  admit.
+Admitted.
+
 Fixpoint height (t : term) : nat :=
   match t with
   | Var _     => 1
