@@ -1,5 +1,6 @@
 Require Import List.
 Import ListNotations.
+Require Import Coq.Lists.ListSet.
 Require Import Arith.
 Require Import Omega.
 Require Eqdep_dec Arith.
@@ -50,7 +51,7 @@ revert args. induction n.
   + inversion H.
   + inversion H. refine (IHn (f t) args H1).
 Defined.
-           
+
 (* rel is a body of a relational symbol *)
 Inductive rel : Set :=
   Rel : forall n, n_ary n -> rel.
@@ -114,11 +115,20 @@ Module SmokeTest.
         rewrite App. unfold fv_terms. simpl. unfold closed_goal_in_context. intros. unfold fv_goal in H.
         unfold fvm in H. simpl in H. remember (free_var t) as FV. inversion_clear FV.
         specialize (H x0).
-        assert (HH: remove Nat.eq_dec x0 (fv_term t ++ [x0]) = fv_term t). admit.
-        rewrite <-HH. auto.
+        assert (HH: remove Nat.eq_dec x0 (fv_term t ++ [x0]) = fv_term t).
+        {
+          generalize dependent H1. clear.
+          intro H. induction (fv_term t).
+          * simpl. destruct (Nat.eq_dec x0 x0). reflexivity. contradiction.
+          * simpl. destruct (Nat.eq_dec x0 a).
+            + exfalso. apply H. unfold In. left. congruence.
+            + apply f_equal. apply IHv. intro C. apply H.
+              unfold In. right. assumption.
+        }
+        rewrite <-HH. apply (set_union_intro name_eq_dec). right. auto.
       + simpl in c. inversion c.
-  Admitted.
-    
+  Qed.
+
   Lemma r2_closed : closed_rel r2.
   Proof.
     unfold closed_rel. intros. simpl in c. unfold length in c. destruct args eqn:A.
@@ -128,10 +138,13 @@ Module SmokeTest.
          - assert (App: apply_rel r2 [t; t0] c = Unify t t0).
              simpl. replace c with (eq_refl 2). simpl. reflexivity. apply Eqdep_dec.UIP_dec, eq_nat_dec. (* Wow! Wow! *)
            rewrite App. unfold fv_terms. simpl. unfold closed_goal_in_context. intros. unfold fv_goal in H.
-           unfold fvm in H. simpl in H. auto.
+           unfold fvm in H. apply (set_union_intro name_eq_dec). simpl in H.
+           specialize (H x). apply in_app_or in H. destruct H.
+           left. apply (set_union_intro name_eq_dec). right. auto.
+           right. auto.
          - inversion c.
   Qed.
-  
+
 End SmokeTest.
 
 (* def is a definition of a closed relational symbol *)
@@ -163,16 +176,16 @@ Section Transitions.
   Variable P : spec.
 
   Inductive eval_step : state' -> label -> state -> Prop :=
-  | UnifyFail    : forall t1 t2     s    n , MGU (apply s t1) (apply s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
-  | UnifySuccess : forall t1 t2     s s' n , MGU (apply s t1) (apply s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
+  | UnifyFail    : forall t1 t2     s    n , unify (apply s t1) (apply s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
+  | UnifySuccess : forall t1 t2     s s' n , unify (apply s t1) (apply s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
   | DisjS        : forall g1 g2        s n , eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
   | ConjS        : forall g1 g2        s n , eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
   | FreshS       : forall fg           s n , eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
-                                                       
+
   | InvokeS      : forall f args r s n (c : length args = arity r) (cl : closed_rel r),
                      find (fun x => Nat.eqb (fst x) f) P = Some (f, Def r cl) -> 
                      eval_step (Leaf (Invoke f args) s n) Step (State (Leaf (apply_rel r args c) s n))
-                                                      
+
   | SumE         : forall st1 st2        l , eval_step st1 l  Stop                    -> eval_step (Sum st1 st2) l (State st2)
   | SumNE        : forall st1 st1' st2   l , eval_step st1 l (State st1')             -> eval_step (Sum st1 st2) l (State (Sum st2 st1'))
   | ProdSE       : forall st g             , eval_step st     Step         Stop       -> eval_step (Prod st g) Step Stop
