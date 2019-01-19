@@ -418,7 +418,7 @@ Example test6: unify (Con 1 (Var 1) (Var 2)) (Con 1 (Var 1) (Var 2)) (Some []). 
 Example test7: unify (Con 1 (Var 1) (Var 1)) (Con 1 (Var 1) (Var 2)) (Some [(1, Var 2)]).             Proof. repeat econstructor. Qed.
 Example test8: unify (Con 1 (Cst 1) (Var 2)) (Con 1 (Var 1) (Cst 2)) (Some [(1, Cst 1); (2, Cst 2)]). Proof. econstructor. econstructor. eapply unify_SubstSome. econstructor. econstructor. econstructor. econstructor. econstructor. Qed.
 
-Lemma unify_works : forall t1 t2, exists r, unify t1 t2 r.
+Lemma unify_exists : forall t1 t2, exists r, unify t1 t2 r.
 Proof.
   intros t1 t2.
   remember (fun p => exists r : option subst, unify (fst p) (snd p) r) as P.
@@ -443,6 +443,23 @@ Proof.
           { eassumption. }
   }
   subst. assumption.
+Qed.
+
+Lemma unify_unique : forall t1 t2 r r', unify t1 t2 r -> unify t1 t2 r' -> r = r'.
+Proof.
+  intros t1 t2 r r' H. revert r'. induction H.
+  * intros. inversion H0; try reflexivity; rewrite H in H1; inversion H1.
+  * intros. inversion H0; try reflexivity; rewrite H in H1; inversion H1.
+  * intros. inversion H1; try reflexivity.
+    + rewrite H in H2; inversion H2.
+    + rewrite H in H2; inversion H2. subst. apply IHunify in H3. inversion H3.
+  * intros. inversion H2.
+    + rewrite H in H3. inversion H3.
+    + rewrite H in H3. inversion H3.
+    + rewrite H in H3. inversion H3. subst.
+      apply IHunify in H4. inversion H4.
+    + rewrite H in H3. inversion H3. subst.
+      apply IHunify in H4. inversion H4. reflexivity.
 Qed.
 
 Lemma fine_step_equal_terms :
@@ -491,13 +508,140 @@ Proof.
   subst. assumption.
 Qed.
 
+Lemma unification_step_binds :
+  forall t1 t2 x t s,
+    unification_step t1 t2 = Subst x t ->
+    unifier s t1 t2 ->
+    apply s (Var x) = apply s t.
+Proof.
+  induction t1; induction t2; intros; simpl in H.
+  * destruct (Nat.eq_dec n n0).
+    + inversion H.
+    + unfold create in H. destruct (occurs n (Var n0)); inversion H.
+      subst. assumption.
+  * unfold create in H. destruct (occurs n (Cst n0)); inversion H. subst. assumption.
+  * unfold create in H. destruct (occurs n (Con n0 t2_1 t2_2)); inversion H. subst. assumption.
+  * unfold create in H. destruct (occurs n0 (Cst n)); inversion H. subst. symmetry. assumption.
+  * destruct (Nat.eq_dec n n0); inversion H.
+  * inversion H.
+  * unfold create in H. destruct (occurs n0 (Con n t1_1 t1_2)); inversion H. subst. symmetry. assumption.
+  * inversion H.
+  * clear IHt2_1. clear IHt2_2.
+    destruct (Nat.eq_dec n n0).
+    + subst. destruct (unification_step t1_1 t2_1) eqn:eq.
+      - inversion H.
+      - inversion H0. apply IHt1_2 with t2_2; assumption.
+      - inversion H. subst. inversion H0. apply IHt1_1 with t2_1; assumption.
+    + inversion H.
+Qed.
+
+Lemma unification_step_binds_2 :
+  forall t1 t2 x t s,
+    unification_step t1 t2 = Subst x t ->
+    unifier s t1 t2 ->
+    forall t', apply s t' = apply s (apply (singleton_subst x t) t').
+Proof.
+  intros. specialize (unification_step_binds t1 t2 x t s H H0). intro.
+  induction t'.
+  * simpl. destruct (Nat.eq_dec x n).
+    + subst. rewrite <- H1. reflexivity.
+    + reflexivity.
+  * reflexivity.
+  * simpl. rewrite IHt'1. rewrite IHt'2. reflexivity.
+Qed.
+
 Lemma unify_most_general :
   forall (t1 t2 : term) (m : subst),
     unify t1 t2 (Some m) ->
     forall (s : subst), unifier s t1 t2 -> more_general m s.
-Proof. admit. Admitted.
+Proof.
+  intros t1 t2 m H. remember (Some m) as r eqn:eq.
+  generalize dependent eq. revert m.
+  induction H; intros m eq; inversion eq; clear eq.
+  * intros. unfold more_general. exists s. intros.
+    rewrite apply_empty. reflexivity.
+  * subst. specialize (IHunify r eq_refl).
+    rename s into st. intros.
+    specialize (unification_step_binds_2 t1 t2 n st s H H1). intro.
+    assert (more_general r s).
+    { apply IHunify. unfold unifier. rewrite <- H2. rewrite <- H2. apply H1. }
+    unfold more_general in H3. destruct H3 as [d H3]. unfold more_general.
+    exists d. intro. rewrite compose_correctness. rewrite <- H3. apply H2.
+Qed.
 
-Lemma non_unifiable_not_unify:
+Lemma occurs_subst_height: forall s n t,
+  occurs n t = true -> height (apply s (Var n)) <= height (apply s t).
+Proof.
+  intros. induction t.
+  * simpl in H. apply Nat.eqb_eq in H. subst. reflexivity.
+  * inversion H.
+  * simpl in H. apply Bool.orb_true_elim in H. destruct H.
+    + apply IHt1 in e. simpl. apply le_S. eapply le_trans.
+      eassumption. apply Nat.le_max_l.
+    + apply IHt2 in e. simpl. apply le_S. eapply le_trans.
+      eassumption. apply Nat.le_max_r.
+Qed.
+
+Search lt.
+Check Nat.lt_irrefl.
+
+Lemma occurs_check_ground :
+  forall x t s,
+    occurs x t = true ->
+    apply s (Var x) = apply s t ->
+    Var x = t.
+Proof.
+  intros x t. destruct t.
+  * intros. simpl in H. apply beq_nat_true_iff in H. congruence.
+  * intros. inversion H.
+  * intros. exfalso. simpl in H. apply Bool.orb_true_elim in H. destruct H.
+    + apply occurs_subst_height with (s := s) in e. rewrite H0 in e.
+      simpl in e. apply le_lt_n_Sm in e. apply lt_S_n in e.
+      apply lt_irrefl with (height (apply s t1)).
+      eapply le_lt_trans.
+      2: { eapply e. }
+      apply Nat.le_max_l.
+    + apply occurs_subst_height with (s := s) in e. rewrite H0 in e.
+      simpl in e. apply le_lt_n_Sm in e. apply lt_S_n in e.
+      apply lt_irrefl with (height (apply s t2)).
+      eapply le_lt_trans.
+      2: { eapply e. }
+      apply Nat.le_max_r.
+Qed.
+
+Lemma unify_non_unifiable :
   forall (t1 t2 : term),
     unify t1 t2 None -> forall s,  ~ (unifier s t1 t2).
-Proof. admit. Admitted.
+Proof.
+  intros t1 t2 H. remember None as r eqn:eq.
+  induction H; inversion eq; clear eq.
+  * generalize dependent H. revert t2.
+    induction t1; induction t2; intros; inversion H.
+    + destruct (Nat.eq_dec n n0).
+      - inversion H1.
+      - unfold create in H1. destruct (occurs n (Var n0)) eqn:eq; inversion H1.
+        intro C. specialize (occurs_check_ground n (Var n0) s eq C). intro.
+        inversion H0. contradiction.
+    + unfold create in H1. destruct (occurs n (Con n0 t2_1 t2_2)) eqn:eq; inversion H1.
+      intro C. specialize (occurs_check_ground n (Con n0 t2_1 t2_2) s eq C). intro.
+      inversion H0.
+    + destruct (Nat.eq_dec n n0).
+      - inversion H1.
+      - intro C. inversion C. contradiction.
+    + intro C. inversion C.
+    + unfold create in H1. destruct (occurs n0 (Con n t1_1 t1_2)) eqn:eq; inversion H1.
+      intro C. red in C. symmetry in C.
+      specialize (occurs_check_ground n0 (Con n t1_1 t1_2) s eq C).
+      intro. inversion H0.
+    + intro C. inversion C.
+    + clear IHt2_1 IHt2_2. intro C. inversion C. destruct (Nat.eq_dec n n0).
+      - subst. destruct (unification_step t1_1 t2_1) eqn:eq.
+        { eapply IHt1_1; eassumption. }
+        { eapply IHt1_2; eassumption. }
+        { inversion H1. }
+      - contradiction.
+  * rename s into st. intros s C.
+    specialize (IHunify eq_refl s).
+    specialize (unification_step_binds_2 t1 t2 n st s H C). intros eq.
+    apply IHunify. red. rewrite <- eq. rewrite <- eq. assumption.
+Qed.
