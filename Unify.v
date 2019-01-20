@@ -582,9 +582,6 @@ Proof.
       eassumption. apply Nat.le_max_r.
 Qed.
 
-Search lt.
-Check Nat.lt_irrefl.
-
 Lemma occurs_check_ground :
   forall x t s,
     occurs x t = true ->

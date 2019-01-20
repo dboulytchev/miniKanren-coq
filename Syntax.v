@@ -193,4 +193,54 @@ Section Transitions.
   | ProdSNE      : forall st g     st'     , eval_step st     Step        (State st') -> eval_step (Prod st g) Step (State (Prod st' g))
   | ProdANE      : forall st g s n st'     , eval_step st    (Answer s n) (State st') -> eval_step (Prod st g) Step (State (Sum (Leaf g s n) (Prod st' g))).
 
+  Lemma eval_step_exists : forall (st' : state'), exists (st : state) (l : label), eval_step st' l st.
+  Proof.
+    intro. induction st'.
+    * destruct g.
+      + assert (exists r, unify (apply s t) (apply s t0) r). { apply unify_exists. }
+        destruct H. destruct x.
+        - eexists. eexists. eapply UnifySuccess. eassumption.
+        - eexists. eexists. eapply UnifyFail. eassumption.
+      + eexists. eexists. econstructor.
+      + eexists. eexists. econstructor.
+      + eexists. eexists. econstructor.
+      + eexists. eexists. econstructor. admit.
+    * destruct IHst'1 as [st1 [l1 IH1]]. destruct st1.
+      + eexists. eexists. eapply SumE. eassumption.
+      + eexists. eexists. eapply SumNE. eassumption.
+    * destruct IHst' as [st [l IH]]. destruct st; destruct l.
+      + eexists. eexists. eapply ProdSE. eassumption.
+      + eexists. eexists. eapply ProdAE. eassumption.
+      + eexists. eexists. eapply ProdSNE. eassumption.
+      + eexists. eexists. eapply ProdANE. eassumption.
+  Admitted.
+
+  Lemma eval_step_unique :
+    forall (st' : state') (l1 l2 : label) (st1 st2 : state),
+      eval_step st' l1 st1 -> eval_step st' l2 st2 -> l1 = l2 /\ st1 = st2.
+  Proof.
+    induction st'.
+    * intros. destruct g; inversion H; inversion H0; subst.
+      + auto.
+      + assert (C : None = Some s').
+        { eapply unify_unique; eassumption. }
+        inversion C.
+      + assert (C : None = Some s').
+        { eapply unify_unique; eassumption. }
+        inversion C.
+      + assert (C : Some s' = Some s'0).
+        { eapply unify_unique; eassumption. }
+        inversion C. auto.
+      + auto.
+      + auto.
+      + auto.
+      + rewrite H14 in H7. inversion H7. subst. (* omg *) admit.
+    * intros. inversion H; inversion H0; subst;
+      specialize (IHst'1 _ _ _ _ H5 H10); inversion IHst'1;
+      inversion H2; subst; auto.
+    * intros. inversion H; inversion H0; subst;
+      specialize (IHst' _ _ _ _ H5 H10); inversion IHst'; subst;
+      inversion H1; inversion H2; auto.
+  Admitted.
+
 End Transitions.
