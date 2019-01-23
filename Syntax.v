@@ -11,7 +11,7 @@ Inductive goal : Set :=
 (* disjunction *) | Disj   : goal -> goal -> goal
 (* conjunction *) | Conj   : goal -> goal -> goal
 (* fresh       *) | Fresh  : (name -> goal) -> goal
-(* invoke      *) | Invoke : name -> list term -> goal.
+(* invoke      *) | Invoke : name -> term -> goal.
 
 (* Free variable monadic enumerator *)
 Fixpoint fvm (n : name) (g : goal) : list name * name :=
@@ -24,7 +24,7 @@ Fixpoint fvm (n : name) (g : goal) : list name * name :=
   | Fresh fg    => let g := fg n in
                    let (ts, n') := fvm (S n) g in
                    (remove Nat.eq_dec n ts, n')
-  | Invoke _ ts => (fv_terms ts, n)
+  | Invoke _ t => (fv_term t, n)
   end.
 
 (* Free variables enumerator *)
@@ -36,41 +36,12 @@ Definition closed_goal_in_context (c : list name) (g : goal) : Prop :=
 
 Definition closed_goal : goal -> Prop := closed_goal_in_context [].
 
-(* N-ary function type from term to goals *)
-Fixpoint n_ary (n : nat) : Set :=
-  match n with
-  | 0   => goal
-  | S k => term -> n_ary k
-  end.
-
-(* Application primitive *)
-Definition n_apply (n : nat) (f : n_ary n) (args : list term) : length args = n -> goal.
-revert args. induction n.
-* intros. refine f.
-* intros. destruct args.
-  + inversion H.
-  + inversion H. refine (IHn (f t) args H1).
-Defined.
-
 (* rel is a body of a relational symbol *)
-Inductive rel : Set :=
-  Rel : forall n, n_ary n -> rel.
-
-(* Arity of a relational symbol *)
-Definition arity (r : rel) : nat :=
-  match r with
-  | Rel n _ => n
-  end.
-
-(* Application of a relational symbol *)
-Definition apply_rel (r : rel) (args : list term) (c : length args = arity r) : goal.
-  destruct r eqn:R. simpl in c. apply (n_apply n n0 args c).
-Defined.
+Definition rel : Set := term -> goal.
 
 (* Closedness of a relational symbol *)
 Definition closed_rel (r : rel) : Prop :=
-  forall (args : list term) (c : length args = arity r),
-    closed_goal_in_context (fv_terms args) (apply_rel r args c).
+  forall (arg : term), closed_goal_in_context (fv_term arg) (r arg).
 
 (* Some checks *)
 Module SmokeTest.
@@ -84,7 +55,7 @@ Module SmokeTest.
     unfold fv_goal in H. unfold fvm in H. unfold g0 in H. simpl in H.
     specialize (H x). destruct (Nat.eq_dec x x) eqn:D. assumption. contradiction.
   Qed.
-  
+
   Lemma g1_closed : closed_goal g1.
   Proof.
     unfold closed_goal. unfold closed_goal_in_context. intros x H.
@@ -92,57 +63,25 @@ Module SmokeTest.
     specialize (H x). simpl in H. destruct (Nat.eq_dec x x) eqn:D. destruct x. simpl in H. auto.
     destruct (Nat.eq_dec (S x) x). simpl in H. auto. simpl in H. destruct (Nat.eq_dec x x). auto. contradiction. contradiction.
   Qed.
-    
-  Definition r0 : rel := Rel 0 (           Unify (Cst 0) (Cst 0)).
-  Definition r1 : rel := Rel 1 (fun t   => Fresh (fun q => Unify t (Var q))).
-  Definition r2 : rel := Rel 2 (fun t q => Unify t q).
 
-  Lemma r0_closed : closed_rel r0.
+  Definition bad_r : rel := (fun t => Fresh (fun x => Unify (Var 0) t)).
+
+  Lemma remove_reduces : forall x y l, In x (remove Nat.eq_dec y l) -> In x l.
   Proof.
-    unfold closed_rel. intros. simpl in c. destruct args eqn:A.
-    * unfold fv_terms. simpl. unfold closed_goal_in_context. simpl. auto.
-    * simpl in c. inversion c.
+    intros. induction l.
+    { auto. }
+    {
+      unfold remove in H. destruct (Nat.eq_dec y a).
+      { right. auto. }
+      { destruct H.
+        { left. auto. }
+        { right. auto. }}}
   Qed.
 
-  Lemma r1_closed : closed_rel r1.
+  Lemma contratest : closed_rel bad_r.
   Proof.
-    unfold closed_rel. intros. simpl in c. destruct args eqn:A.
-    * simpl in c. inversion c.
-    * simpl in c. inversion c. unfold length in H0. destruct l eqn:L.
-      + simpl in c.
-        assert (App: apply_rel r1 [t] c = Fresh (fun q => Unify t (Var q))).
-          simpl. replace c with (eq_refl 1). auto. apply Eqdep_dec.UIP_dec, eq_nat_dec.  (* Wow! Wow! *)
-        rewrite App. unfold fv_terms. simpl. unfold closed_goal_in_context. intros. unfold fv_goal in H.
-        unfold fvm in H. simpl in H. remember (free_var t) as FV. inversion_clear FV.
-        specialize (H x0).
-        assert (HH: remove Nat.eq_dec x0 (fv_term t ++ [x0]) = fv_term t).
-        {
-          generalize dependent H1. clear.
-          intro H. induction (fv_term t).
-          * simpl. destruct (Nat.eq_dec x0 x0). reflexivity. contradiction.
-          * simpl. destruct (Nat.eq_dec x0 a).
-            + exfalso. apply H. unfold In. left. congruence.
-            + apply f_equal. apply IHv. intro C. apply H.
-              unfold In. right. assumption.
-        }
-        rewrite <-HH. apply (set_union_intro name_eq_dec). right. auto.
-      + simpl in c. inversion c.
-  Qed.
-
-  Lemma r2_closed : closed_rel r2.
-  Proof.
-    unfold closed_rel. intros. simpl in c. unfold length in c. destruct args eqn:A.
-    * inversion c.
-    * destruct l. inversion c.
-      + destruct l.
-         - assert (App: apply_rel r2 [t; t0] c = Unify t t0).
-             simpl. replace c with (eq_refl 2). simpl. reflexivity. apply Eqdep_dec.UIP_dec, eq_nat_dec. (* Wow! Wow! *)
-           rewrite App. unfold fv_terms. simpl. unfold closed_goal_in_context. intros. unfold fv_goal in H.
-           unfold fvm in H. apply (set_union_intro name_eq_dec). simpl in H.
-           specialize (H x). apply in_app_or in H. destruct H.
-           left. apply (set_union_intro name_eq_dec). right. auto.
-           right. auto.
-         - inversion c.
+    red. red. intros. specialize (H 0). unfold fv_goal in H.
+    simpl in H. eapply remove_reduces. eauto.
   Qed.
 
 End SmokeTest.
@@ -182,9 +121,9 @@ Section Transitions.
   | ConjS        : forall g1 g2        s n , eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
   | FreshS       : forall fg           s n , eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
 
-  | InvokeS      : forall f args r s n (c : length args = arity r) (cl : closed_rel r),
-                     find (fun x => Nat.eqb (fst x) f) P = Some (f, Def r cl) -> 
-                     eval_step (Leaf (Invoke f args) s n) Step (State (Leaf (apply_rel r args c) s n))
+  | InvokeS      : forall f arg r s n (cl : closed_rel r),
+                     find (fun x => Nat.eqb (fst x) f) P = Some (f, Def r cl) ->
+                     eval_step (Leaf (Invoke f arg) s n) Step (State (Leaf (r arg) s n))
 
   | SumE         : forall st1 st2        l (H: eval_step st1 l  Stop), eval_step (Sum st1 st2) l (State st2)
   | SumNE        : forall st1 st1' st2   l , eval_step st1 l (State st1')             -> eval_step (Sum st1 st2) l (State (Sum st2 st1'))
@@ -194,20 +133,20 @@ Section Transitions.
   | ProdANE      : forall st g s n st'     , eval_step st    (Answer s n) (State st') -> eval_step (Prod st g) Step (State (Sum (Leaf g s n) (Prod st' g))).
 
   Hint Constructors eval_step.
-  
+
   Lemma eval_step_exists : forall (st' : state'), exists (st : state) (l : label), eval_step st' l st.
   Proof.
     intro. induction st'.
     * destruct g.
-      2-4: repeat eexists; econstructor.      
+      2-4: repeat eexists; econstructor.
       + assert (exists r, unify (apply s t) (apply s t0) r). { apply unify_exists. }
         destruct H. destruct x.
         all: repeat eexists; eauto.
       + repeat eexists. econstructor. admit.
     * destruct IHst'1 as [st1 [l1 IH1]]. destruct st1.
-      all: repeat eexists; eauto.    
+      all: repeat eexists; eauto.
     * destruct IHst' as [st [l IH]]. destruct st; destruct l.
-      all: repeat eexists; eauto.     
+      all: repeat eexists; eauto.
   Admitted.
 
   Lemma eval_step_unique :
@@ -229,13 +168,13 @@ Section Transitions.
       + auto.
       + auto.
       + auto.
-      + rewrite H14 in H7. inversion H7. subst. (* omg *) admit.
+      + rewrite H14 in H7. inversion H7. auto.
     * intros. inversion H; inversion H0; subst;
       specialize (IHst'1 _ _ _ _ H5 H10); inversion IHst'1;
       inversion H2; subst; auto.
     * intros. inversion H; inversion H0; subst;
       specialize (IHst' _ _ _ _ H5 H10); inversion IHst'; subst;
       inversion H1; inversion H2; auto.
-  Admitted.
+  Qed.
 
 End Transitions.
