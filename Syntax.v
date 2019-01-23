@@ -114,6 +114,31 @@ Section Transitions.
 
   Variable P : spec.
 
+  Inductive well_formed_goal : goal -> Prop :=
+  | wfUnify  : forall t1 t2, well_formed_goal (Unify t1 t2)
+  | wfDisj   : forall g1 g2, well_formed_goal g1 -> well_formed_goal g2 -> well_formed_goal (Disj g1 g2)
+  | wfConj   : forall g1 g2, well_formed_goal g1 -> well_formed_goal g2 -> well_formed_goal (Conj g1 g2)
+  | wfFresh  : forall fg, (forall n, well_formed_goal (fg n)) -> well_formed_goal (Fresh fg)
+  | wfInvoke : forall f arg, (exists r cl, find (fun x => Nat.eqb (fst x) f) P = Some (f, Def r cl)) ->
+                             well_formed_goal (Invoke f arg).
+
+  Hint Constructors well_formed_goal.
+
+  Variable P_well_formed : forall f r cl arg, In (f, Def r cl) P -> well_formed_goal (r arg).
+
+  Inductive well_formed_state' : state' -> Prop :=
+  | wfLeaf : forall g s n,     well_formed_goal g ->
+                               well_formed_state' (Leaf g s n)
+  | wfSum  : forall st'1 st'2, well_formed_state' st'1 ->
+                               well_formed_state' st'2 ->
+                               well_formed_state' (Sum st'1 st'2)
+  | wfProd : forall st' g,     well_formed_state' st' ->
+                               well_formed_goal g ->
+                               well_formed_state' (Prod st' g).
+
+  Hint Constructors well_formed_state'.
+
+
   Inductive eval_step : state' -> label -> state -> Prop :=
   | UnifyFail    : forall t1 t2     s    n , unify (apply s t1) (apply s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
   | UnifySuccess : forall t1 t2     s s' n , unify (apply s t1) (apply s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
@@ -134,20 +159,37 @@ Section Transitions.
 
   Hint Constructors eval_step.
 
-  Lemma eval_step_exists : forall (st' : state'), exists (st : state) (l : label), eval_step st' l st.
+  Lemma well_formedness_preservation :
+    forall (st' st'_next : state') (l : label),
+      eval_step st' l (State st'_next) -> well_formed_state' st' -> well_formed_state' st'_next.
   Proof.
-    intro. induction st'.
+    intros. remember (State st'_next).
+    generalize dependent Heqs. revert st'_next.
+    induction H; intros st'_next eq; inversion eq.
+    1-3: inversion H0; inversion H2; auto.
+    2-6: inversion H0; subst; auto.
+    * apply find_some in H. destruct H. eauto.
+  Qed.
+
+  Lemma eval_step_exists : forall (st' : state'),
+    well_formed_state' st' -> exists (st : state) (l : label), eval_step st' l st.
+  Proof.
+    intros st' wf_st'. induction st'.
     * destruct g.
       2-4: repeat eexists; econstructor.
       + assert (exists r, unify (apply s t) (apply s t0) r). { apply unify_exists. }
         destruct H. destruct x.
         all: repeat eexists; eauto.
-      + repeat eexists. econstructor. admit.
-    * destruct IHst'1 as [st1 [l1 IH1]]. destruct st1.
+      + inversion wf_st'. inversion H0.
+        destruct H4. destruct H4.
+        repeat eexists. eauto.
+    * inversion wf_st'. specialize (IHst'1 H1).
+      destruct IHst'1 as [st1 [l1 IH1]]. destruct st1.
       all: repeat eexists; eauto.
-    * destruct IHst' as [st [l IH]]. destruct st; destruct l.
+    * inversion wf_st'. specialize (IHst' H1).
+      destruct IHst' as [st [l IH]]. destruct st; destruct l.
       all: repeat eexists; eauto.
-  Admitted.
+  Qed.
 
   Lemma eval_step_unique :
     forall (st' : state') (l1 l2 : label) (st1 st2 : state),
