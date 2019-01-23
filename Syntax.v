@@ -186,33 +186,28 @@ Section Transitions.
                      find (fun x => Nat.eqb (fst x) f) P = Some (f, Def r cl) -> 
                      eval_step (Leaf (Invoke f args) s n) Step (State (Leaf (apply_rel r args c) s n))
 
-  | SumE         : forall st1 st2        l , eval_step st1 l  Stop                    -> eval_step (Sum st1 st2) l (State st2)
+  | SumE         : forall st1 st2        l (H: eval_step st1 l  Stop), eval_step (Sum st1 st2) l (State st2)
   | SumNE        : forall st1 st1' st2   l , eval_step st1 l (State st1')             -> eval_step (Sum st1 st2) l (State (Sum st2 st1'))
   | ProdSE       : forall st g             , eval_step st     Step         Stop       -> eval_step (Prod st g) Step Stop
   | ProdAE       : forall st g s n         , eval_step st    (Answer s n)  Stop       -> eval_step (Prod st g) Step (State (Leaf g s n))
   | ProdSNE      : forall st g     st'     , eval_step st     Step        (State st') -> eval_step (Prod st g) Step (State (Prod st' g))
   | ProdANE      : forall st g s n st'     , eval_step st    (Answer s n) (State st') -> eval_step (Prod st g) Step (State (Sum (Leaf g s n) (Prod st' g))).
 
+  Hint Constructors eval_step.
+  
   Lemma eval_step_exists : forall (st' : state'), exists (st : state) (l : label), eval_step st' l st.
   Proof.
     intro. induction st'.
     * destruct g.
+      2-4: repeat eexists; econstructor.      
       + assert (exists r, unify (apply s t) (apply s t0) r). { apply unify_exists. }
         destruct H. destruct x.
-        - eexists. eexists. eapply UnifySuccess. eassumption.
-        - eexists. eexists. eapply UnifyFail. eassumption.
-      + eexists. eexists. econstructor.
-      + eexists. eexists. econstructor.
-      + eexists. eexists. econstructor.
-      + eexists. eexists. econstructor. admit.
+        all: repeat eexists; eauto.
+      + repeat eexists. econstructor. admit.
     * destruct IHst'1 as [st1 [l1 IH1]]. destruct st1.
-      + eexists. eexists. eapply SumE. eassumption.
-      + eexists. eexists. eapply SumNE. eassumption.
+      all: repeat eexists; eauto.    
     * destruct IHst' as [st [l IH]]. destruct st; destruct l.
-      + eexists. eexists. eapply ProdSE. eassumption.
-      + eexists. eexists. eapply ProdAE. eassumption.
-      + eexists. eexists. eapply ProdSNE. eassumption.
-      + eexists. eexists. eapply ProdANE. eassumption.
+      all: repeat eexists; eauto.     
   Admitted.
 
   Lemma eval_step_unique :
