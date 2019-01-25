@@ -16,14 +16,14 @@ Inductive goal : Set :=
 (* Free variable monadic enumerator *)
 Fixpoint fvm (n : name) (g : goal) : list name * name :=
   match g with
-  | Unify t1 t2 => (fv_term t1 ++ fv_term t2, n)
+  | Unify t1 t2 => (var_set_union (fv_term t1) (fv_term t2), n)
   | Disj  g1 g2
-  | Conj  g1 g2 => let (t1, n1) := fvm n  g1 in
-                   let (t2, n2) := fvm n1 g2 in
-                   (t1 ++ t2, n2)
+  | Conj  g1 g2 => let (s1, n1) := fvm n  g1 in
+                   let (s2, n2) := fvm n1 g2 in
+                   (var_set_union s1 s2, n2)
   | Fresh fg    => let g := fg n in
                    let (ts, n') := fvm (S n) g in
-                   (remove Nat.eq_dec n ts, n')
+                   (var_set_remove n ts, n')
   | Invoke _ t => (fv_term t, n)
   end.
 
@@ -32,7 +32,7 @@ Definition fv_goal n g := fst (fvm n g).
 
 (* Closedness of goals *)
 Definition closed_goal_in_context (c : list name) (g : goal) : Prop :=
-  forall x, (forall n, In x (fv_goal n g)) -> In x c.
+  forall x n, In x (fv_goal n g) -> In x c.
 
 Definition closed_goal : goal -> Prop := closed_goal_in_context [].
 
@@ -51,37 +51,70 @@ Module SmokeTest.
 
   Lemma g0_closed : closed_goal g0.
   Proof.
-    unfold closed_goal. unfold closed_goal_in_context. intros x H.
-    unfold fv_goal in H. unfold fvm in H. unfold g0 in H. simpl in H.
-    specialize (H x). destruct (Nat.eq_dec x x) eqn:D. assumption. contradiction.
+    red. red. intros. unfold fv_goal in H. unfold fvm in H.
+    simpl in H. destruct (name_eq_dec n n).
+    * auto.
+    * contradiction.
   Qed.
 
   Lemma g1_closed : closed_goal g1.
   Proof.
-    unfold closed_goal. unfold closed_goal_in_context. intros x H.
-    unfold fv_goal in H. unfold fvm in H. unfold g1 in H. unfold fv_term in H.
-    specialize (H x). simpl in H. destruct (Nat.eq_dec x x) eqn:D. destruct x. simpl in H. auto.
-    destruct (Nat.eq_dec (S x) x). simpl in H. auto. simpl in H. destruct (Nat.eq_dec x x). auto. contradiction. contradiction.
+    red. red. intros. unfold fv_goal in H. unfold fvm in H.
+    simpl in H. destruct n.
+    * auto.
+    * destruct (name_eq_dec (S n) n).
+      + omega.
+      + unfold var_set_remove in H.
+        unfold set_remove in H.
+        destruct (name_eq_dec (S (S n)) (S n));
+        destruct (name_eq_dec (S (S n)) (S (S n)));
+        destruct (name_eq_dec (S n) (S n));
+        try omega. auto.
   Qed.
 
-  Definition bad_r : rel := (fun t => Fresh (fun x => Unify (Var 0) t)).
+  Definition r0 : rel := (fun t => Fresh (fun x => Fresh (fun y =>
+      Conj (Unify t (Con 0 (Var x) (Var y))) (Unify (Var x) (Var y))))).
+  Definition r1 : rel := (fun t => Fresh (fun x => Unify (Var 0) t)).
 
-  Lemma remove_reduces : forall x y l, In x (remove Nat.eq_dec y l) -> In x l.
+  Lemma r0_closed : closed_rel r0.
   Proof.
-    intros. induction l.
-    { auto. }
-    {
-      unfold remove in H. destruct (Nat.eq_dec y a).
-      { right. auto. }
-      { destruct H.
-        { left. auto. }
-        { right. auto. }}}
+    red. red. intros. unfold fv_goal in H. unfold fvm in H.
+    red in H. red in H. red in H. fold In in H.
+    assert (NoDup (var_set_union
+               (var_set_union (fv_term arg)
+                  (fv_term (Con 0 (Var n) (Var (S n)))))
+               (var_set_union (fv_term (Var n))
+                  (fv_term (Var (S n)))))).
+    { apply set_union_nodup; apply set_union_nodup; apply fv_term_nodup. }
+    assert (NoDup
+       (var_set_remove (S n)
+            (var_set_union
+               (var_set_union (fv_term arg)
+                  (fv_term (Con 0 (Var n) (Var (S n)))))
+               (var_set_union (fv_term (Var n))
+                  (fv_term (Var (S n))))))).
+    { apply set_remove_nodup. auto. }
+    unfold var_set_remove in H.
+    apply (set_remove_iff name_eq_dec _ _ H1) in H. destruct H.
+    apply (set_remove_iff name_eq_dec _ _ H0) in H. destruct H.
+    unfold var_set_union in H. apply set_union_elim in H. destruct H.
+    + apply set_union_elim in H. destruct H.
+      - auto.
+      - simpl in H. destruct n.
+        { destruct H; try omega. destruct H; try omega. inversion H. }
+        { destruct (name_eq_dec (S n) n); try omega.
+          destruct H; try omega. destruct H; try omega. inversion H. }
+    + simpl in H. destruct n.
+      { destruct H; try omega. destruct H; try omega. inversion H. }
+      { destruct (name_eq_dec (S n) n); try omega.
+        destruct H; try omega. destruct H; try omega. inversion H. }
   Qed.
 
-  Lemma contratest : closed_rel bad_r.
+  Lemma r1_non_closed : ~ closed_rel r1.
   Proof.
-    red. red. intros. specialize (H 0). unfold fv_goal in H.
-    simpl in H. eapply remove_reduces. eauto.
+    intro C. red in C. red in C.
+    specialize (C (Cst 0) 0 1). apply C.
+    simpl. auto.
   Qed.
 
 End SmokeTest.
