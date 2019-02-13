@@ -136,6 +136,9 @@ CoInductive op_sem : state -> trace -> Prop :=
                                op_sem st t ->
                                op_sem (State st') (Cons label l t).
 
+CoInductive wrapper : state -> Prop :=
+| wrap : forall st t, op_sem st t -> wrapper st.
+
 Lemma op_sem_exists : forall st, exists t, op_sem st t.
 Proof.
   admit.
@@ -155,17 +158,6 @@ Proof.
     + rewrite <- H11 in H6. apply CIH with st0; assumption.
 Qed.
 
-(* May be false *)
-Lemma nil_equal_interleave :
-  forall t1 t2, equal_streams label t1 t2 -> interleave label (Nil label) t1 t2.
-Proof.
-  cofix CIH. intros. inversion H; subst.
-  + constructor.
-  + assert (interleave label (Nil label) t0 t3).
-    { apply CIH. assumption. }
-    admit.
-Admitted.
-
 Lemma sum_op_sem : forall st'1 st'2 t1 t2 t, op_sem (State st'1) t1 ->
                                              op_sem (State st'2) t2 ->
                                              op_sem (State (Sum st'1 st'2)) t ->
@@ -175,8 +167,32 @@ Proof.
   inversion H5; subst; specialize (eval_step_unique _ _ _ _ _ H3 H10);
   intro; destruct H2; subst; constructor.
   * inversion H4. subst. specialize (op_sem_unique _ _ _ H0 H6).
-    intro. inversion H2.
-    + constructor.
-    + subst. constructor. apply nil_equal_interleave. assumption.
+    intro. inversion H2; subst.
+    + constructor. constructor.
+    + constructor. constructor. auto.
   * eapply CIH; eassumption.
+Qed.
+
+Search and.
+
+Lemma disjunction_finite_commutativity :
+  forall g1 g2 s n t12 t21,
+    op_sem (State (Leaf (Disj g1 g2) s n)) t12 ->
+    op_sem (State (Leaf (Disj g2 g1) s n)) t21 ->
+    finite label t12 -> finite label t21.
+Proof.
+  intros.
+  inversion H; subst.
+  inversion H3; subst.
+  inversion H0; subst.
+  inversion H5; subst.
+  inversion H1; subst.
+  specialize (op_sem_exists (State (Leaf g1 s n))). intro. destruct H2.
+  specialize (op_sem_exists (State (Leaf g2 s n))). intro. destruct H8.
+  specialize (sum_op_sem _ _ _ _ _ H2 H8 H4). intro.
+  specialize (sum_op_sem _ _ _ _ _ H8 H2 H6). intro.
+  constructor.
+  specialize (interleave_finite _ _ _ _ H9). intro.
+  specialize (interleave_finite _ _ _ _ H10). intro.
+  apply H12. apply and_comm. apply H11. auto.
 Qed.
