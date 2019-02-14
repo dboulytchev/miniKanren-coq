@@ -43,6 +43,11 @@ Inductive well_formed_state' : state' -> Prop :=
                              well_formed_goal g ->
                              well_formed_state' (Prod st' g).
 
+
+Inductive well_formed_state : state -> Prop :=
+| wfEmpty    : well_formed_state Stop
+| wfNonEmpty : forall st', well_formed_state' st' -> well_formed_state (State st').
+
 Hint Constructors well_formed_state'.
 
 (* Transitions *)
@@ -136,10 +141,8 @@ CoInductive op_sem : state -> trace -> Prop :=
                                op_sem st t ->
                                op_sem (State st') (Cons label l t).
 
-Lemma op_sem_exists : forall st, exists t, op_sem st t.
-Proof.
-  admit.
-Admitted.
+Lemma op_sem_exists : forall st, well_formed_state st -> exists t, op_sem st t.
+Proof. admit. Admitted.
 
 Lemma op_sem_unique :
   forall st t1 t2, op_sem st t1 -> op_sem st t2 -> equal_streams label t1 t2.
@@ -155,14 +158,17 @@ Proof.
     + rewrite <- H11 in H6. apply CIH with st0; assumption.
 Qed.
 
+Lemma equal_rewrite (A : Set) (P : stream A -> Prop) (s : stream A) : P s -> forall s', equal_streams A s' s -> P s'.
+Proof.
+      
 (* May be false *)
 Lemma nil_equal_interleave :
-  forall t1 t2, equal_streams label t1 t2 -> interleave label (Nil label) t1 t2.
+  forall t1 t2 t3, interleave label (Nil label) t1 t2 -> equal_streams label t1 t2.
 Proof.
   cofix CIH. intros. inversion H; subst.
   + constructor.
   + assert (interleave label (Nil label) t0 t3).
-    { apply CIH. assumption. }
+    { apply CIH. assumption. } 
     admit.
 Admitted.
 
