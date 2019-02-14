@@ -1,6 +1,6 @@
 Section Stream.
 
-  Variable A : Set.
+  Context {A : Set}.
 
   CoInductive stream : Set :=
   | Nil : stream
@@ -128,15 +128,15 @@ End Stream.
 
 Section Test.
 
-  CoFixpoint nats (n : nat) : stream nat := Cons nat n (nats (S n)).
-  Definition true_false : stream bool := Cons bool true (Cons bool false (Nil bool)).
+  CoFixpoint nats (n : nat) : stream := Cons n (nats (S n)).
+  Definition true_false : stream := Cons true (Cons false Nil).
 
-  Lemma true_false_fin : finite bool true_false.
+  Lemma true_false_fin : finite true_false.
   Proof.
     constructor. constructor. constructor.
   Qed.
 
-  Lemma nats_not_fin : forall n, ~ finite nat (nats n).
+  Lemma nats_not_fin : forall n, ~ finite (nats n).
   Proof.
     intro. intro. remember (nats n). generalize dependent Heqs.
     revert n.
@@ -146,7 +146,7 @@ Section Test.
       inversion Heqs. reflexivity.
   Qed.
 
-  Lemma nats_contain_all_nats : forall n, in_stream nat n (nats 0).
+  Lemma nats_contain_all_nats : forall n, in_stream n (nats 0).
   Proof.
     induction n.
     * rewrite helper_eq. constructor.
