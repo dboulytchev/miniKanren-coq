@@ -1,0 +1,7 @@
+*.glob
+.*.aux
+*.vo
+*~
+_CoqProject
+Makefile.coq
+Makefile.coq.conf

@@ -133,19 +133,44 @@ Proof.
 Qed.
 
 (* Traces *)
-Definition trace : Set := stream label.
+Definition trace : Set := @stream label.
 
 CoInductive op_sem : state -> trace -> Prop :=
-| osStop : op_sem Stop (Nil label)
+| osStop : op_sem Stop Nil
 | osState : forall st' l st t, eval_step st' l st ->
                                op_sem st t ->
-                               op_sem (State st') (Cons label l t).
+                               op_sem (State st') (Cons l t).
 
-Lemma op_sem_exists : forall st, well_formed_state st -> exists t, op_sem st t.
-Proof. admit. Admitted.
+CoInductive wrapper : state -> Prop :=
+| wrap : forall st t, op_sem st t -> wrapper st.
+
+CoInductive coexists (A : Type) (P : A -> Prop) : Prop :=
+  coex_intro : forall x : A, P x -> coexists A P.
+
+Lemma coexists_exists (A : Type) (P : A -> Prop) (H : coexists A P) : exists x, P x.
+Proof.
+  inversion H. exists x. auto.
+Qed.
+  
+Lemma op_sem_exists : forall st, well_formed_state st -> coexists trace (fun t => op_sem st t).
+Proof.
+  cofix CIH. 
+  intros st H. inversion H.
+  * apply coex_intro with (x:=Nil). constructor.
+  * apply (eval_step_exists st') in H0. inversion H0. inversion H2.
+    destruct x.
+    + specialize (CIH Stop wfEmpty). inversion CIH. 
+      apply coex_intro with (x:=Cons x0 x). econstructor; eauto.
+    + inversion H.
+      - subst st. inversion H4.
+      - rewrite <-H5 in H1. inversion H1. subst st'0.
+        apply (well_formedness_preservation st' s x0 H3) in H4.
+        apply wfNonEmpty in H4. specialize (CIH (State s) H4). inversion CIH.
+        apply coex_intro with (x:=Cons x0 x). econstructor; eauto.
+Qed.
 
 Lemma op_sem_unique :
-  forall st t1 t2, op_sem st t1 -> op_sem st t2 -> equal_streams label t1 t2.
+  forall st t1 t2, op_sem st t1 -> op_sem st t2 -> equal_streams t1 t2.
 Proof.
   cofix CIH. intros. inversion H; inversion H0.
   * constructor.
@@ -158,31 +183,39 @@ Proof.
     + rewrite <- H11 in H6. apply CIH with st0; assumption.
 Qed.
 
-Lemma equal_rewrite (A : Set) (P : stream A -> Prop) (s : stream A) : P s -> forall s', equal_streams A s' s -> P s'.
-Proof.
-      
-(* May be false *)
-Lemma nil_equal_interleave :
-  forall t1 t2 t3, interleave label (Nil label) t1 t2 -> equal_streams label t1 t2.
-Proof.
-  cofix CIH. intros. inversion H; subst.
-  + constructor.
-  + assert (interleave label (Nil label) t0 t3).
-    { apply CIH. assumption. } 
-    admit.
-Admitted.
-
 Lemma sum_op_sem : forall st'1 st'2 t1 t2 t, op_sem (State st'1) t1 ->
                                              op_sem (State st'2) t2 ->
                                              op_sem (State (Sum st'1 st'2)) t ->
-                                             interleave label t1 t2 t.
+                                             interleave t1 t2 t.
 Proof.
   cofix CIH. intros. inversion H. subst. inversion H1. subst.
   inversion H5; subst; specialize (eval_step_unique _ _ _ _ _ H3 H10);
   intro; destruct H2; subst; constructor.
   * inversion H4. subst. specialize (op_sem_unique _ _ _ H0 H6).
-    intro. inversion H2.
-    + constructor.
-    + subst. constructor. apply nil_equal_interleave. assumption.
+    intro. inversion H2; subst.
+    + constructor. constructor.
+    + constructor. constructor. auto.
   * eapply CIH; eassumption.
+Qed.
+
+Lemma disjunction_finite_commutativity :
+  forall g1 g2 s n t12 t21,
+    op_sem (State (Leaf (Disj g1 g2) s n)) t12 ->
+    op_sem (State (Leaf (Disj g2 g1) s n)) t21 ->
+    finite t12 -> finite t21.
+Proof.
+  intros.
+  inversion H; subst.
+  inversion H3; subst.
+  inversion H0; subst.
+  inversion H5; subst.
+  inversion H1; subst.
+  specialize (op_sem_exists (State (Leaf g1 s n))). intro. destruct H2.
+  specialize (op_sem_exists (State (Leaf g2 s n))). intro. destruct H8.
+  specialize (sum_op_sem _ _ _ _ _ H2 H8 H4). intro.
+  specialize (sum_op_sem _ _ _ _ _ H8 H2 H6). intro.
+  constructor.
+  specialize (interleave_finite _ _ _ H9). intro.
+  specialize (interleave_finite _ _ _ H10). intro.
+  apply H12. apply and_comm. apply H11. auto.
 Qed.
