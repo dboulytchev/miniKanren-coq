@@ -151,7 +151,12 @@ Lemma coexists_exists (A : Type) (P : A -> Prop) (H : coexists A P) : exists x, 
 Proof.
   inversion H. exists x. auto.
 Qed.
-  
+(*
+CoFixpoint trace_from (st : state) (Hwf : well_formed_state st) : trace :=
+  match st with
+  | Stop      => Nil
+  | State st' => 
+  *)
 Lemma op_sem_exists : forall st, well_formed_state st -> coexists trace (fun t => op_sem st t).
 Proof.
   cofix CIH. 
@@ -159,8 +164,8 @@ Proof.
   * apply coex_intro with (x:=Nil). constructor.
   * apply (eval_step_exists st') in H0. inversion H0. inversion H2.
     destruct x.
-    + specialize (CIH Stop wfEmpty). inversion CIH. 
-      apply coex_intro with (x:=Cons x0 x). econstructor; eauto.
+    + specialize (CIH Stop wfEmpty). apply coexists_exists in CIH. inversion CIH.  
+      eapply coex_intro. inversion CIH. with (x:=Cons x0 x). econstructor; eauto.
     + inversion H.
       - subst st. inversion H4.
       - rewrite <-H5 in H1. inversion H1. subst st'0.

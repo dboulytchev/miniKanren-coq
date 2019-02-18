@@ -398,7 +398,7 @@ Proof.
   red; intro; eapply fvOrder_wf'; eauto.
 Defined.
 
-Inductive unify : term -> term -> option subst -> Prop :=
+Inductive unify : term -> term -> option subst -> Set :=
 | unify_Fail : forall t1 t2, unification_step t1 t2 = Fail -> unify t1 t2 None
 | unify_Fine : forall t1 t2, unification_step t1 t2 = Fine -> unify t1 t2 (Some empty_subst)
 | unify_SubstNone : forall t1 t2 n s, unification_step t1 t2 = Subst n s ->
@@ -418,10 +418,10 @@ Example test6: unify (Con 1 (Var 1) (Var 2)) (Con 1 (Var 1) (Var 2)) (Some []). 
 Example test7: unify (Con 1 (Var 1) (Var 1)) (Con 1 (Var 1) (Var 2)) (Some [(1, Var 2)]).             Proof. repeat econstructor. Qed.
 Example test8: unify (Con 1 (Cst 1) (Var 2)) (Con 1 (Var 1) (Cst 2)) (Some [(1, Cst 1); (2, Cst 2)]). Proof. econstructor. econstructor. eapply unify_SubstSome. econstructor. econstructor. econstructor. econstructor. econstructor. Qed.
 
-Lemma unify_exists : forall t1 t2, exists r, unify t1 t2 r.
+Lemma unify_exists : forall t1 t2, {r & unify t1 t2 r}.
 Proof.
   intros t1 t2.
-  remember (fun p => exists r : option subst, unify (fst p) (snd p) r) as P.
+  remember (fun p => {r : option subst & unify (fst p) (snd p) r}) as P.
   assert (P (t1, t2)).
   {
     apply well_founded_induction with (R := fvOrderRel).
