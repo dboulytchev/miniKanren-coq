@@ -448,18 +448,18 @@ Qed.
 Lemma unify_unique : forall t1 t2 r r', unify t1 t2 r -> unify t1 t2 r' -> r = r'.
 Proof.
   intros t1 t2 r r' H. revert r'. induction H.
-  * intros. inversion H0; try reflexivity; rewrite H in H1; inversion H1.
-  * intros. inversion H0; try reflexivity; rewrite H in H1; inversion H1.
-  * intros. inversion H1; try reflexivity.
-    + rewrite H in H2; inversion H2.
-    + rewrite H in H2; inversion H2. subst. apply IHunify in H3. inversion H3.
-  * intros. inversion H2.
-    + rewrite H in H3. inversion H3.
-    + rewrite H in H3. inversion H3.
-    + rewrite H in H3. inversion H3. subst.
-      apply IHunify in H4. inversion H4.
-    + rewrite H in H3. inversion H3. subst.
-      apply IHunify in H4. inversion H4. reflexivity.
+  * intros. inversion H; try reflexivity; rewrite e in H0; inversion H0.
+  * intros. inversion H; try reflexivity; rewrite e in H0; inversion H0.
+  * intros. inversion H0; try reflexivity.
+    + rewrite e in H1; inversion H1.
+    + rewrite e in H1; inversion H1. subst. apply IHunify in H2. inversion H2.
+  * intros. inversion H0.
+    + rewrite e in H1. inversion H1.
+    + rewrite e in H1. inversion H1.
+    + rewrite e in H1. inversion H1. subst.
+      apply IHunify in H2. inversion H2.
+    + rewrite e in H1. inversion H1. subst.
+      apply IHunify in H2. inversion H2. reflexivity.
 Qed.
 
 Lemma fine_step_equal_terms :
@@ -562,11 +562,11 @@ Proof.
     rewrite apply_empty. reflexivity.
   * subst. specialize (IHunify r eq_refl).
     rename s into st. intros.
-    specialize (unification_step_binds_2 t1 t2 n st s H H1). intro.
+    specialize (unification_step_binds_2 t1 t2 n st s e H0). intro.
     assert (more_general r s).
-    { apply IHunify. unfold unifier. rewrite <- H2. rewrite <- H2. apply H1. }
-    unfold more_general in H3. destruct H3 as [d H3]. unfold more_general.
-    exists d. intro. rewrite compose_correctness. rewrite <- H3. apply H2.
+    { apply IHunify. unfold unifier. rewrite <- H1. rewrite <- H1. apply H0. }
+    unfold more_general in H2. destruct H2 as [d H2]. unfold more_general.
+    exists d. intro. rewrite compose_correctness. rewrite <- H2. apply H1.
 Qed.
 
 Lemma occurs_subst_height: forall s n t,
@@ -612,8 +612,8 @@ Lemma unify_non_unifiable :
 Proof.
   intros t1 t2 H. remember None as r eqn:eq.
   induction H; inversion eq; clear eq.
-  * generalize dependent H. revert t2.
-    induction t1; induction t2; intros; inversion H.
+  * generalize dependent e. revert t2.
+    induction t1; induction t2; intros H s; inversion H.
     + destruct (Nat.eq_dec n n0).
       - inversion H1.
       - unfold create in H1. destruct (occurs n (Var n0)) eqn:eq; inversion H1.
@@ -639,6 +639,6 @@ Proof.
       - contradiction.
   * rename s into st. intros s C.
     specialize (IHunify eq_refl s).
-    specialize (unification_step_binds_2 t1 t2 n st s H C). intros eq.
+    specialize (unification_step_binds_2 t1 t2 n st s e C). intros eq.
     apply IHunify. red. rewrite <- eq. rewrite <- eq. assumption.
 Qed.
