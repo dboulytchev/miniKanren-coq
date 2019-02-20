@@ -1,4 +1,5 @@
 Require Import List.
+Require Import Program.
 Require Import Unify.
 Require Import MiniKanrenSyntax.
 Require Import Stream.
@@ -54,8 +55,8 @@ Hint Constructors well_formed_state.
 
 (* Transitions *)
 Inductive eval_step : state' -> label -> state -> Set :=
-| UnifyFail    : forall t1 t2     s    n , unify (apply s t1) (apply s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
-| UnifySuccess : forall t1 t2     s s' n , unify (apply s t1) (apply s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
+| UnifyFail    : forall t1 t2     s    n , unify (apply' s t1) (apply' s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
+| UnifySuccess : forall t1 t2     s s' n , unify (apply' s t1) (apply' s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
 | DisjS        : forall g1 g2        s n , eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
 | ConjS        : forall g1 g2        s n , eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
 | FreshS       : forall fg           s n , eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
@@ -98,7 +99,7 @@ Proof.
   intros st' wf_st'. induction st'.
   * destruct g.
     2-4: repeat eexists; econstructor.
-    + assert ({r & unify (apply s t) (apply s t0) r}). { apply unify_exists. }
+    + assert ({r & unify (apply' s t) (apply' s t0) r}). { apply unify_exists. }
       destruct H. destruct x.
       all: repeat eexists; eauto.
     + inversion wf_st'. inversion H0.
@@ -143,11 +144,11 @@ Qed.
 (* Traces *)
 Definition trace : Set := @stream label.
 
-CoInductive op_sem : state -> trace -> Prop :=
+CoInductive op_sem : state -> trace -> Set :=
 | osStop : op_sem Stop Nil
-| osState : forall st' l st t, eval_step st' l st ->
-                               op_sem st t ->
-                               op_sem (State st') (Cons l t).
+| osState : forall st' l st t (EV: eval_step st' l st)
+                              (OP: op_sem st t),  
+                              op_sem (State st') (Cons l t).
 
 Hint Constructors op_sem.
 
@@ -173,17 +174,31 @@ destruct st.
   refine (Cons l (trace_from st H1)).
 Defined.
 
-Lemma op_sem_exists : forall st, well_formed_state st -> exists t : trace, op_sem st t.
+(*
+CoFixpoint test (st : state) (Hwf : well_formed_state st) : op_sem st (trace_from st Hwf).
+  refine (
+  match Hwf in well_formed_state st'' return (st = st'' -> op_sem st (trace_from st'' Hwf)) with
+  | wfEmpty            => fun H => _ 
+  | wfNonEmpty st' wf' => fun H => _
+  end eq_refl).
+*)  
+
+Lemma op_sem_exists : forall st, well_formed_state st -> { t : trace & op_sem st t}.
 Proof.
   assert (forall st (Hwf : well_formed_state st), op_sem st (trace_from st Hwf)).
   {
     cofix CIH.
-    intros. inversion Hwf; subst.
-    * rewrite helper_eq. auto.
-    * rewrite helper_eq. constructor.
+    intros. inversion Hwf; subst; rewrite helper_eq; simpl.
+      * constructor.      
+      * dependent destruction Hwf. simpl. unfold eq_rec_r. unfold eq_rec.
+        unfold eq_rect. remember (eq_sym eq_refl). dependent destruction e. destruct (eval_step_exists st' w).
+        destruct s. apply osState with (x0). apply e. apply CIH. 
+        
+      
+        
   }
   intros. eexists. eapply (H st H0).
-Admitted.
+Qed.
 
 (*
   cofix CIH. 
@@ -229,8 +244,8 @@ Proof.
     + constructor. constructor. auto.
   * eapply CIH; eassumption.
 Qed.
-
-(* Lemma disjunction_finite_commutativity :
+(*
+Lemma disjunction_finite_commutativity :
   forall g1 g2 s n t12 t21,
     op_sem (State (Leaf (Disj g1 g2) s n)) t12 ->
     op_sem (State (Leaf (Disj g2 g1) s n)) t21 ->
@@ -250,4 +265,5 @@ Proof.
   specialize (interleave_finite _ _ _ H9). intro.
   specialize (interleave_finite _ _ _ H10). intro.
   apply H12. apply and_comm. apply H11. auto.
-Qed. *)
+Qed. 
+*)
