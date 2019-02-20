@@ -165,39 +165,31 @@ Proof.
 Qed.
 *)
 
-CoFixpoint trace_from (st : state) (Hwf : well_formed_state st) : trace.
-destruct st.
-* refine Nil.
-* inversion Hwf. specialize (eval_step_exists s H0). intro.
-  destruct H1 as [l [st H1]]. apply well_formedness_preservation in H1.
-  2 : auto.
-  refine (Cons l (trace_from st H1)).
-Defined.
+CoFixpoint trace_from (st : state) (Hwf : well_formed_state st) : trace :=
+  match Hwf with
+  | wfEmpty => Nil
+  | wfNonEmpty st' wf' =>
+    match eval_step_exists st' wf' with
+    | existT _ l (existT _ st'' ev_st'_st'') =>
+      Cons l (trace_from st'' (well_formedness_preservation st' l st'' ev_st'_st'' wf'))          
+    end
+  end.
 
-(*
 CoFixpoint test (st : state) (Hwf : well_formed_state st) : op_sem st (trace_from st Hwf).
   refine (
   match Hwf in well_formed_state st'' return (st = st'' -> op_sem st (trace_from st'' Hwf)) with
-  | wfEmpty            => fun H => _ 
+  | wfEmpty            => fun H => _
   | wfNonEmpty st' wf' => fun H => _
   end eq_refl).
-*)  
+  { rewrite helper_eq. simpl. subst st. constructor. }
+  rewrite helper_eq. simpl. destruct (eval_step_exists st' wf'). destruct s.
+  subst st. econstructor. eauto.
+  exact (test x0 (well_formedness_preservation st' x x0 e wf')).
+Defined.
 
-Lemma op_sem_exists : forall st, well_formed_state st -> { t : trace & op_sem st t}.
+Lemma op_sem_exists (st : state) (wfs: well_formed_state st) : { t : trace & op_sem st t}.
 Proof.
-  assert (forall st (Hwf : well_formed_state st), op_sem st (trace_from st Hwf)).
-  {
-    cofix CIH.
-    intros. inversion Hwf; subst; rewrite helper_eq; simpl.
-      * constructor.      
-      * dependent destruction Hwf. simpl. unfold eq_rec_r. unfold eq_rec.
-        unfold eq_rect. remember (eq_sym eq_refl). dependent destruction e. destruct (eval_step_exists st' w).
-        destruct s. apply osState with (x0). apply e. apply CIH. 
-        
-      
-        
-  }
-  intros. eexists. eapply (H st H0).
+  eexists. eapply test. (H st H0).
 Qed.
 
 (*
