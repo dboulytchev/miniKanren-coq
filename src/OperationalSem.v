@@ -55,8 +55,8 @@ Hint Constructors well_formed_state.
 
 (* Transitions *)
 Inductive eval_step : state' -> label -> state -> Set :=
-| UnifyFail    : forall t1 t2     s    n , unify (apply' s t1) (apply' s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
-| UnifySuccess : forall t1 t2     s s' n , unify (apply' s t1) (apply' s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
+| UnifyFail    : forall t1 t2     s    n , unify (apply_subst s t1) (apply_subst s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
+| UnifySuccess : forall t1 t2     s s' n , unify (apply_subst s t1) (apply_subst s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
 | DisjS        : forall g1 g2        s n , eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
 | ConjS        : forall g1 g2        s n , eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
 | FreshS       : forall fg           s n , eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
@@ -78,12 +78,9 @@ Lemma well_formedness_preservation :
   forall (st' : state') (l : label) (st : state),
     eval_step st' l st -> well_formed_state' st' -> well_formed_state st.
 Proof.
-  intros.
-  (* generalize dependent Heqs. revert st'_next. *)
-  induction H. (*; intros st'_next eq; inversion eq.*)
+  intros. induction H.
   1,2,9 : auto.
   1-3: inversion H0; inversion H1; auto.
-  (* 2-6: inversion H0; subst; auto. *)
   * apply find_some in e. destruct e.
     constructor. constructor. eapply P_well_formed. eauto.
   * inversion H0; subst; auto.
@@ -99,7 +96,7 @@ Proof.
   intros st' wf_st'. induction st'.
   * destruct g.
     2-4: repeat eexists; econstructor.
-    + assert ({r & unify (apply' s t) (apply' s t0) r}). { apply unify_exists. }
+    + assert ({r & unify (apply_subst s t) (apply_subst s t0) r}). { apply unify_exists. }
       destruct H. destruct x.
       all: repeat eexists; eauto.
     + inversion wf_st'. inversion H0.
@@ -147,23 +144,10 @@ Definition trace : Set := @stream label.
 CoInductive op_sem : state -> trace -> Set :=
 | osStop : op_sem Stop Nil
 | osState : forall st' l st t (EV: eval_step st' l st)
-                              (OP: op_sem st t),  
+                              (OP: op_sem st t),
                               op_sem (State st') (Cons l t).
 
 Hint Constructors op_sem.
-
-(*
-CoInductive wrapper : state -> Prop :=
-| wrap : forall st t, op_sem st t -> wrapper st.
-
-CoInductive coexists (A : Type) (P : A -> Prop) : Prop :=
-  coex_intro : forall x : A, P x -> coexists A P.
-
-Lemma coexists_exists (A : Type) (P : A -> Prop) (H : coexists A P) : exists x, P x.
-Proof.
-  inversion H. exists x. auto.
-Qed.
-*)
 
 CoFixpoint trace_from (st : state) (Hwf : well_formed_state st) : trace :=
   match Hwf with
@@ -171,7 +155,7 @@ CoFixpoint trace_from (st : state) (Hwf : well_formed_state st) : trace :=
   | wfNonEmpty st' wf' =>
     match eval_step_exists st' wf' with
     | existT _ l (existT _ st'' ev_st'_st'') =>
-      Cons l (trace_from st'' (well_formedness_preservation st' l st'' ev_st'_st'' wf'))          
+      Cons l (trace_from st'' (well_formedness_preservation st' l st'' ev_st'_st'' wf'))
     end
   end.
 
@@ -189,7 +173,7 @@ Defined.
 
 Lemma op_sem_exists (st : state) (wfs: well_formed_state st) : { t : trace & op_sem st t}.
 Proof.
-  eexists. eapply test. (H st H0).
+  eexists. eapply (test st wfs).
 Qed.
 
 (*
@@ -211,15 +195,14 @@ Qed. *)
 Lemma op_sem_unique :
   forall st t1 t2, op_sem st t1 -> op_sem st t2 -> equal_streams t1 t2.
 Proof.
-  cofix CIH. intros. inversion H; inversion H0.
+  cofix CIH. intros. inversion H; inversion H0;
+  rewrite <- H1 in H3; inversion H3.
   * constructor.
-  * rewrite <- H1 in H5. inversion H5.
-  * rewrite <- H3 in H5. inversion H5.
-  * rewrite <- H3 in H7. inversion H7. rewrite H10 in H5.
-    specialize (eval_step_unique st' l l0 st0 st1 H1 H5).
-    intro. destruct H9. constructor.
-    + assumption.
-    + rewrite <- H11 in H6. apply CIH with st0; assumption.
+  * subst.
+    specialize (eval_step_unique _ _ _ _ _ EV EV0).
+    intro. destruct H1. constructor.
+    + auto.
+    + subst. eapply CIH; eauto.
 Qed.
 
 Lemma sum_op_sem : forall st'1 st'2 t1 t2 t, op_sem (State st'1) t1 ->
@@ -228,34 +211,35 @@ Lemma sum_op_sem : forall st'1 st'2 t1 t2 t, op_sem (State st'1) t1 ->
                                              interleave t1 t2 t.
 Proof.
   cofix CIH. intros. inversion H. subst. inversion H1. subst.
-  inversion H5; subst; specialize (eval_step_unique _ _ _ _ _ H3 H10);
+  inversion EV0; subst; specialize (eval_step_unique _ _ _ _ _ EV H6);
   intro; destruct H2; subst; constructor.
-  * inversion H4. subst. specialize (op_sem_unique _ _ _ H0 H6).
+  * inversion OP. subst. specialize (op_sem_unique _ _ _ H0 OP0).
     intro. inversion H2; subst.
     + constructor. constructor.
     + constructor. constructor. auto.
   * eapply CIH; eassumption.
 Qed.
-(*
+
 Lemma disjunction_finite_commutativity :
-  forall g1 g2 s n t12 t21,
-    op_sem (State (Leaf (Disj g1 g2) s n)) t12 ->
-    op_sem (State (Leaf (Disj g2 g1) s n)) t21 ->
-    finite t12 -> finite t21.
+  forall g1 g2 s n t12 t21
+    (wf1 : well_formed_state (State (Leaf g1 s n)))
+    (wf2 : well_formed_state (State (Leaf g2 s n)))
+    (ops11 : op_sem (State (Leaf (Disj g1 g2) s n)) t12)
+    (ops21 : op_sem (State (Leaf (Disj g2 g1) s n)) t21)
+    (fin12 : finite t12), finite t21.
 Proof.
   intros.
-  inversion H; subst.
-  inversion H3; subst.
-  inversion H0; subst.
-  inversion H5; subst.
-  inversion H1; subst.
-  specialize (op_sem_exists (State (Leaf g1 s n))). intro. destruct H2.
-  specialize (op_sem_exists (State (Leaf g2 s n))). intro. destruct H8
-  specialize (sum_op_sem _ _ _ _ _ H2 H8 H4). intro.
-  specialize (sum_op_sem _ _ _ _ _ H8 H2 H6). intro.
+  inversion ops11; subst.
+  inversion EV; subst.
+  inversion fin12; subst.
+  inversion ops21; subst.
+  inversion EV0; subst.
   constructor.
-  specialize (interleave_finite _ _ _ H9). intro.
-  specialize (interleave_finite _ _ _ H10). intro.
-  apply H12. apply and_comm. apply H11. auto.
-Qed. 
-*)
+  specialize (op_sem_exists _ wf1). intro. destruct H as [t1 OP1].
+  specialize (op_sem_exists _ wf2). intro. destruct H as [t2 OP2].
+  specialize (sum_op_sem _ _ _ _ _ OP1 OP2 OP). intro.
+  specialize (sum_op_sem _ _ _ _ _ OP2 OP1 OP0). intro.
+  specialize (interleave_finite _ _ _ H). intro.
+  specialize (interleave_finite _ _ _ H1). intro.
+  apply H3. apply and_comm. apply H2. auto.
+Qed.
