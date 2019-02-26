@@ -19,6 +19,20 @@ Inductive term : Set :=
 (* a constant           *) | Cst : name -> term
 (* a binary constructor *) | Con : name -> term -> term -> term.
 
+Lemma term_eq_dec : (forall t1 t2 : term, {t1 = t2} + {t1 <> t2}).
+Proof.
+  induction t1; destruct t2.
+  2, 3, 4, 6, 7, 8: right; intro H; inversion H.
+  1, 2: specialize (eq_nat_dec n n0); intro; destruct H;
+        [ left; auto
+        | right; intro H; inversion H; auto ].
+  specialize (eq_nat_dec n n0); intro; destruct H;
+  specialize (IHt1_1 t2_1); destruct IHt1_1;
+  specialize (IHt1_2 t2_2); destruct IHt1_2.
+  1: left; subst; reflexivity.
+  all: right; intro H; inversion H; auto.
+Qed.
+
 Definition var_set := set name.
 
 Definition var_set_empty : var_set := empty_set name.
@@ -33,6 +47,8 @@ Fixpoint fv_term (t : term) : var_set :=
   | Cst _     => var_set_empty
   | Con _ l r => var_set_union (fv_term l) (fv_term r)
   end.
+
+Definition ground_term : Set := {t : term | fv_term t = var_set_empty}.
 
 Lemma fv_term_nodup : forall t, NoDup (fv_term t).
 Proof.
