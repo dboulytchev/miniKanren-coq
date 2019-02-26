@@ -22,7 +22,8 @@ Inductive label : Set :=
 
 Variable P : spec.
 
-Inductive well_formed_goal : goal -> Set :=
+(*
+Definition well_formed_goal : goal -> Set :=
 | wfUnify  : forall t1 t2, well_formed_goal (Unify t1 t2)
 | wfDisj   : forall g1 g2, well_formed_goal g1 -> well_formed_goal g2 -> well_formed_goal (Disj g1 g2)
 | wfConj   : forall g1 g2, well_formed_goal g1 -> well_formed_goal g2 -> well_formed_goal (Conj g1 g2)
@@ -46,34 +47,32 @@ Inductive well_formed_state' : state' -> Set :=
 
 Hint Constructors well_formed_state'.
 
-
 Inductive well_formed_state : state -> Set :=
 | wfEmpty    : well_formed_state Stop
 | wfNonEmpty : forall st', well_formed_state' st' -> well_formed_state (State st').
 
 Hint Constructors well_formed_state.
+*)
 
 (* Transitions *)
 Inductive eval_step : state' -> label -> state -> Set :=
-| UnifyFail    : forall t1 t2     s    n , unify (apply_subst s t1) (apply_subst s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
-| UnifySuccess : forall t1 t2     s s' n , unify (apply_subst s t1) (apply_subst s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
-| DisjS        : forall g1 g2        s n , eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
-| ConjS        : forall g1 g2        s n , eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
-| FreshS       : forall fg           s n , eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
-
-| InvokeS      : forall f arg r s n (cl : closed_rel r),
-                   find (fun x => Nat.eqb (fst x) f) P = Some (f, Def r cl) ->
-                   eval_step (Leaf (Invoke f arg) s n) Step (State (Leaf (r arg) s n))
-
+| FailS        : forall           s    n, eval_step (Leaf Fail s n) Step Stop
+| UnifyFail    : forall t1 t2     s    n, unify (apply_subst s t1) (apply_subst s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
+| UnifySuccess : forall t1 t2     s s' n, unify (apply_subst s t1) (apply_subst s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
+| DisjS        : forall g1 g2     s    n, eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
+| ConjS        : forall g1 g2     s    n, eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
+| FreshS       : forall fg        s    n, eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
+| InvokeS      : forall r arg     s    n, eval_step (Leaf (Invoke r arg) s n) Step (State (Leaf (proj1_sig (P r) arg) s n))
 | SumE         : forall st1 st2        l (H: eval_step st1 l  Stop), eval_step (Sum st1 st2) l (State st2)
-| SumNE        : forall st1 st1' st2   l , eval_step st1 l (State st1')             -> eval_step (Sum st1 st2) l (State (Sum st2 st1'))
-| ProdSE       : forall st g             , eval_step st     Step         Stop       -> eval_step (Prod st g) Step Stop
-| ProdAE       : forall st g s n         , eval_step st    (Answer s n)  Stop       -> eval_step (Prod st g) Step (State (Leaf g s n))
-| ProdSNE      : forall st g     st'     , eval_step st     Step        (State st') -> eval_step (Prod st g) Step (State (Prod st' g))
-| ProdANE      : forall st g s n st'     , eval_step st    (Answer s n) (State st') -> eval_step (Prod st g) Step (State (Sum (Leaf g s n) (Prod st' g))).
+| SumNE        : forall st1 st1' st2   l, eval_step st1 l (State st1')             -> eval_step (Sum st1 st2) l (State (Sum st2 st1'))
+| ProdSE       : forall st g            , eval_step st     Step         Stop       -> eval_step (Prod st g) Step Stop
+| ProdAE       : forall st g s n        , eval_step st    (Answer s n)  Stop       -> eval_step (Prod st g) Step (State (Leaf g s n))
+| ProdSNE      : forall st g     st'    , eval_step st     Step        (State st') -> eval_step (Prod st g) Step (State (Prod st' g))
+| ProdANE      : forall st g s n st'    , eval_step st    (Answer s n) (State st') -> eval_step (Prod st g) Step (State (Sum (Leaf g s n) (Prod st' g))).
 
 Hint Constructors eval_step.
 
+(*
 Lemma well_formedness_preservation :
   forall (st' : state') (l : label) (st : state),
     eval_step st' l st -> well_formed_state' st' -> well_formed_state st.
@@ -89,24 +88,19 @@ Proof.
   * inversion H0; subst; apply IHeval_step in H3; inversion H3; auto.
   * inversion H0; subst; apply IHeval_step in H3; inversion H3; auto.
 Qed.
+*)
 
-Lemma eval_step_exists : forall (st' : state'),
-  well_formed_state' st' ->  {l : label & {st : state & eval_step st' l st}}.
+Lemma eval_step_exists : forall (st' : state'), {l : label & {st : state & eval_step st' l st}}.
 Proof.
-  intros st' wf_st'. induction st'.
+  induction st'.
   * destruct g.
-    2-4: repeat eexists; econstructor.
+    1,3-6: repeat eexists; econstructor.
     + assert ({r & unify (apply_subst s t) (apply_subst s t0) r}). { apply unify_exists. }
       destruct H. destruct x.
       all: repeat eexists; eauto.
-    + inversion wf_st'. inversion H0.
-      destruct H4. destruct s1.
-      repeat eexists. eauto.
-  * inversion wf_st'. specialize (IHst'1 H1).
-    destruct IHst'1 as [l1 [st1 IH1]]. destruct st1.
+  * destruct IHst'1 as [l1 [st1 IH1]]. destruct st1.
     all: repeat eexists; eauto.
-  * inversion wf_st'. specialize (IHst' H1).
-    destruct IHst' as [l [st IH]]. destruct st; destruct l.
+  * destruct IHst' as [l [st IH]]. destruct st; destruct l.
     all: repeat eexists; eauto.
 Qed.
 
@@ -115,8 +109,7 @@ Lemma eval_step_unique :
     eval_step st' l1 st1 -> eval_step st' l2 st2 -> l1 = l2 /\ st1 = st2.
 Proof.
   induction st'.
-  * intros. destruct g; inversion H; inversion H0; subst.
-    + auto.
+  * intros. destruct g; inversion H; inversion H0; subst; auto.
     + assert (C : None = Some s').
       { eapply unify_unique; eassumption. }
       inversion C.
@@ -126,10 +119,6 @@ Proof.
     + assert (C : Some s' = Some s'0).
       { eapply unify_unique; eassumption. }
       inversion C. auto.
-    + auto.
-    + auto.
-    + auto.
-    + rewrite H14 in H7. inversion H7. auto.
   * intros. inversion H; inversion H0; subst;
     specialize (IHst'1 _ _ _ _ H5 H10); inversion IHst'1;
     inversion H2; subst; auto.
@@ -149,17 +138,26 @@ CoInductive op_sem : state -> trace -> Set :=
 
 Hint Constructors op_sem.
 
-CoFixpoint trace_from (st : state) (Hwf : well_formed_state st) : trace :=
-  match Hwf with
-  | wfEmpty => Nil
-  | wfNonEmpty st' wf' =>
-    match eval_step_exists st' wf' with
+CoFixpoint trace_from (st : state) : trace :=
+  match st with
+  | Stop => Nil
+  | State st' =>
+    match eval_step_exists st' with
     | existT _ l (existT _ st'' ev_st'_st'') =>
-      Cons l (trace_from st'' (well_formedness_preservation st' l st'' ev_st'_st'' wf'))
+      Cons l (trace_from st'')
     end
   end.
 
-CoFixpoint test (st : state) (Hwf : well_formed_state st) : op_sem st (trace_from st Hwf).
+Lemma trace_from_correct : forall st, op_sem st (trace_from st).
+Proof.
+  cofix CIH. destruct st.
+  { rewrite helper_eq. simpl. constructor. }
+  { rewrite helper_eq. simpl. destruct (eval_step_exists s).
+    destruct s0. econstructor. eauto. eauto. }
+Qed.
+
+(*
+CoFixpoint test (st : state) : op_sem st (trace_from st).
   refine (
   match Hwf in well_formed_state st'' return (st = st'' -> op_sem st (trace_from st'' Hwf)) with
   | wfEmpty            => fun H => _
@@ -170,27 +168,12 @@ CoFixpoint test (st : state) (Hwf : well_formed_state st) : op_sem st (trace_fro
   subst st. econstructor. eauto.
   exact (test x0 (well_formedness_preservation st' x x0 e wf')).
 Defined.
+*)
 
-Lemma op_sem_exists (st : state) (wfs: well_formed_state st) : { t : trace & op_sem st t}.
+Lemma op_sem_exists (st : state) : {t : trace & op_sem st t}.
 Proof.
-  eexists. eapply (test st wfs).
+  eexists. eapply trace_from_correct.
 Qed.
-
-(*
-  cofix CIH. 
-  intros st H. inversion H.
-  * apply coex_intro with (x:=Nil). constructor.
-  * apply (eval_step_exists st') in H0. inversion H0. inversion H2.
-    destruct x.
-    + specialize (CIH Stop wfEmpty). apply coexists_exists in CIH. inversion CIH.  
-      eapply coex_intro. inversion CIH. with (x:=Cons x0 x). econstructor; eauto.
-    + inversion H.
-      - subst st. inversion H4.
-      - rewrite <-H5 in H1. inversion H1. subst st'0.
-        apply (well_formedness_preservation st' s x0 H3) in H4.
-        apply wfNonEmpty in H4. specialize (CIH (State s) H4). inversion CIH.
-        apply coex_intro with (x:=Cons x0 x). econstructor; eauto.
-Qed. *)
 
 Lemma op_sem_unique :
   forall st t1 t2, op_sem st t1 -> op_sem st t2 -> equal_streams t1 t2.
@@ -222,8 +205,6 @@ Qed.
 
 Lemma disjunction_finite_commutativity :
   forall g1 g2 s n t12 t21
-    (wf1 : well_formed_state (State (Leaf g1 s n)))
-    (wf2 : well_formed_state (State (Leaf g2 s n)))
     (ops11 : op_sem (State (Leaf (Disj g1 g2) s n)) t12)
     (ops21 : op_sem (State (Leaf (Disj g2 g1) s n)) t21)
     (fin12 : finite t12), finite t21.
@@ -235,8 +216,8 @@ Proof.
   inversion ops21; subst.
   inversion EV0; subst.
   constructor.
-  specialize (op_sem_exists _ wf1). intro. destruct H as [t1 OP1].
-  specialize (op_sem_exists _ wf2). intro. destruct H as [t2 OP2].
+  specialize (op_sem_exists (State (Leaf g1 s n))). intro. destruct H as [t1 OP1].
+  specialize (op_sem_exists (State (Leaf g2 s n))). intro. destruct H as [t2 OP2].
   specialize (sum_op_sem _ _ _ _ _ OP1 OP2 OP). intro.
   specialize (sum_op_sem _ _ _ _ _ OP2 OP1 OP0). intro.
   specialize (interleave_finite _ _ _ H). intro.
