@@ -1,5 +1,5 @@
 Require Import List.
-Require Import Program.
+(*Require Import Program.*)
 Require Import Unify.
 Require Import MiniKanrenSyntax.
 Require Import Stream.
@@ -185,28 +185,13 @@ CoFixpoint test (st : state) (Hwf : well_formed_state st) : op_sem st (trace_fro
   rewrite helper_eq. simpl. destruct (eval_step_exists st' wf'). destruct s.
   subst st. econstructor. eauto.
   exact (test x0 (well_formedness_preservation st' x x0 e wf')).
-Defined.
+Qed.
 
 Lemma op_sem_exists (st : state) (wfs: well_formed_state st) : { t : trace & op_sem st t}.
 Proof.
-  eexists. eapply test. (H st H0).
+  exists (trace_from st wfs).
+  apply (test st wfs).
 Qed.
-
-(*
-  cofix CIH. 
-  intros st H. inversion H.
-  * apply coex_intro with (x:=Nil). constructor.
-  * apply (eval_step_exists st') in H0. inversion H0. inversion H2.
-    destruct x.
-    + specialize (CIH Stop wfEmpty). apply coexists_exists in CIH. inversion CIH.  
-      eapply coex_intro. inversion CIH. with (x:=Cons x0 x). econstructor; eauto.
-    + inversion H.
-      - subst st. inversion H4.
-      - rewrite <-H5 in H1. inversion H1. subst st'0.
-        apply (well_formedness_preservation st' s x0 H3) in H4.
-        apply wfNonEmpty in H4. specialize (CIH (State s) H4). inversion CIH.
-        apply coex_intro with (x:=Cons x0 x). econstructor; eauto.
-Qed. *)
 
 Lemma op_sem_unique :
   forall st t1 t2, op_sem st t1 -> op_sem st t2 -> equal_streams t1 t2.
