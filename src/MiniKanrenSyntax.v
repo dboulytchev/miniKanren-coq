@@ -7,6 +7,7 @@ Require Eqdep_dec Arith.
 Require Import Unify.
 
 Inductive goal : Set :=
+(* failure     *) | Fail   : goal
 (* unification *) | Unify  : term -> term -> goal
 (* disjunction *) | Disj   : goal -> goal -> goal
 (* conjunction *) | Conj   : goal -> goal -> goal
@@ -16,6 +17,7 @@ Inductive goal : Set :=
 (* Free variable monadic enumerator *)
 Fixpoint fvm (n : name) (g : goal) : list name * name :=
   match g with
+  | Fail        => ([], n)
   | Unify t1 t2 => (var_set_union (fv_term t1) (fv_term t2), n)
   | Disj  g1 g2
   | Conj  g1 g2 => let (s1, n1) := fvm n  g1 in
@@ -120,8 +122,7 @@ Module SmokeTest.
 End SmokeTest.
 
 (* def is a definition of a closed relational symbol *)
-Inductive def : Set :=
-  Def : forall (r: rel), closed_rel r -> def.
+Definition def : Set := {r : rel | closed_rel r}.
 
 (* spec is a list of definitions *)
-Definition spec : Set := list (name * def).
+Definition spec : Set := name -> def.

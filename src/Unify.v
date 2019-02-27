@@ -19,6 +19,20 @@ Inductive term : Set :=
 (* a constant           *) | Cst : name -> term
 (* a binary constructor *) | Con : name -> term -> term -> term.
 
+Lemma term_eq_dec : (forall t1 t2 : term, {t1 = t2} + {t1 <> t2}).
+Proof.
+  induction t1; destruct t2.
+  2, 3, 4, 6, 7, 8: right; intro H; inversion H.
+  1, 2: specialize (eq_nat_dec n n0); intro; destruct H;
+        [ left; auto
+        | right; intro H; inversion H; auto ].
+  specialize (eq_nat_dec n n0); intro; destruct H;
+  specialize (IHt1_1 t2_1); destruct IHt1_1;
+  specialize (IHt1_2 t2_2); destruct IHt1_2.
+  1: left; subst; reflexivity.
+  all: right; intro H; inversion H; auto.
+Qed.
+
 Definition var_set := set name.
 
 Definition var_set_empty : var_set := empty_set name.
@@ -33,6 +47,8 @@ Fixpoint fv_term (t : term) : var_set :=
   | Cst _     => var_set_empty
   | Con _ l r => var_set_union (fv_term l) (fv_term r)
   end.
+
+Definition ground_term : Set := {t : term | fv_term t = var_set_empty}.
 
 Lemma fv_term_nodup : forall t, NoDup (fv_term t).
 Proof.
@@ -121,27 +137,27 @@ Fixpoint image (s : subst) (n : name) : option term :=
   end.
 
 (* Substitution application *)
-Fixpoint apply' (s : subst) (t : term) : term :=
+Fixpoint apply_subst (s : subst) (t : term) : term :=
   match t with
   | Cst _     => t
   | Var n     => match image s n with None => t | Some t' => t' end
-  | Con n l r => Con n (apply' s l) (apply' s r)
+  | Con n l r => Con n (apply_subst s l) (apply_subst s r)
   end.
 
-Lemma apply_empty: forall (t : term), apply' empty_subst t = t.
+Lemma apply_empty: forall (t : term), apply_subst empty_subst t = t.
 Proof.
   induction t; try (simpl; congruence); auto.
 Qed.
 
 (* Free variables in the result of a singleton substitution application *)
-Lemma apply_fv: forall t s n m,  In m (fv_term (apply' [(n, s)] t)) -> In m (fv_term s) \/ In m (fv_term t).
+Lemma apply_fv: forall t s n m,  In m (fv_term (apply_subst [(n, s)] t)) -> In m (fv_term s) \/ In m (fv_term t).
 Proof.
   induction t.
-  * intros. unfold apply' in H. unfold image in H. destruct (Nat.eq_dec n0 n).
+  * intros. unfold apply_subst in H. unfold image in H. destruct (Nat.eq_dec n0 n).
     + left. assumption.
     + right. assumption.
   * intros. inversion H.
-  * intros. unfold apply' in H. fold apply' in H.
+  * intros. unfold apply_subst in H. fold apply_subst in H.
     unfold fv_term in H. fold fv_term in H. apply (set_union_elim name_eq_dec) in H. destruct H.
     + apply IHt1 in H. destruct H.
       - left. assumption.
@@ -153,10 +169,10 @@ Qed.
 
 (* Composition *)
 Definition compose (s1 s2 : subst) : subst :=
-  List.map (fun p => (fst p, apply' s2 (snd p))) s1 ++ s2.
+  List.map (fun p => (fst p, apply_subst s2 (snd p))) s1 ++ s2.
 
 Lemma compose_correctness: forall (s1 s2 : subst) (t : term),
-  apply' (compose s1 s2) t = apply' s2 (apply' s1 t).
+  apply_subst (compose s1 s2) t = apply_subst s2 (apply_subst s1 t).
 Proof.
   intros. induction t.
   * simpl. destruct (image s1 n) eqn:eq.
@@ -176,10 +192,10 @@ Qed.
 
 (* Generality *)
 Definition more_general (m s : subst) : Prop :=
-  exists (s' : subst), forall (t : term), apply' s t = apply' s' (apply' m t).
+  exists (s' : subst), forall (t : term), apply_subst s t = apply_subst s' (apply_subst m t).
 
 (* Unification property *)
-Definition unifier (s : subst) (t1 t2 : term) : Prop := apply' s t1 = apply' s t2.
+Definition unifier (s : subst) (t1 t2 : term) : Prop := apply_subst s t1 = apply_subst s t2.
 
 (* MGU *)
 (* Definition mgu (m : subst) (t1 t2 : term) : Prop :=
@@ -321,16 +337,16 @@ Proof.
         right. unfold fv_term. fold fv_term. apply (set_union_intro name_eq_dec). left. assumption.
 Qed.
 
-Lemma unification_step_subst_elims: forall s t n, In n (fv_term (apply' (singleton_subst n s) t)) -> In n (fv_term s).
+Lemma unification_step_subst_elims: forall s t n, In n (fv_term (apply_subst (singleton_subst n s) t)) -> In n (fv_term s).
 Proof.
   intros s t n. unfold singleton_subst. induction t.
-  * unfold apply'. unfold image. destruct (Nat.eq_dec n n0).
+  * unfold apply_subst. unfold image. destruct (Nat.eq_dec n n0).
     + auto.
     + unfold fv_term. intros. exfalso. inversion H.
       - apply n1. symmetry. assumption.
       - inversion H0.
   * intros. inversion H.
-  * intros. unfold apply' in H. fold apply' in H. unfold fv_term in H. fold fv_term in H.
+  * intros. unfold apply_subst in H. fold apply_subst in H. unfold fv_term in H. fold fv_term in H.
     apply (set_union_elim name_eq_dec) in H. destruct H; auto.
 Qed.
 
@@ -356,7 +372,7 @@ Qed.
 Lemma unification_step_decreases_fv:
   forall t1 t2 s n,
     unification_step_ok t1 t2 n s ->
-    var_set_size (var_set_union (fv_term (apply' (singleton_subst n s) t1)) (fv_term (apply' [(n, s)] t2))) < var_set_size (var_set_union (fv_term t1) (fv_term t2)).
+    var_set_size (var_set_union (fv_term (apply_subst (singleton_subst n s) t1)) (fv_term (apply_subst [(n, s)] t2))) < var_set_size (var_set_union (fv_term t1) (fv_term t2)).
 Proof.
   intros t1 t2 s n USok.
   apply lt_size; try apply union_NoDup.
@@ -402,10 +418,10 @@ Inductive unify : term -> term -> option subst -> Set :=
 | unify_Fail : forall t1 t2, unification_step t1 t2 = Fail -> unify t1 t2 None
 | unify_Fine : forall t1 t2, unification_step t1 t2 = Fine -> unify t1 t2 (Some empty_subst)
 | unify_SubstNone : forall t1 t2 n s, unification_step t1 t2 = Subst n s ->
-                                      unify (apply' (singleton_subst n s) t1) (apply' (singleton_subst n s) t2) None ->
+                                      unify (apply_subst (singleton_subst n s) t1) (apply_subst (singleton_subst n s) t2) None ->
                                       unify t1 t2 None
 | unify_SubstSome : forall t1 t2 n s r sr, unification_step t1 t2 = Subst n s ->
-                                           unify (apply' (singleton_subst n s) t1) (apply' (singleton_subst n s) t2) (Some r) ->
+                                           unify (apply_subst (singleton_subst n s) t1) (apply_subst (singleton_subst n s) t2) (Some r) ->
                                            sr = compose (singleton_subst n s) r ->
                                            unify t1 t2 (Some sr).
 
@@ -430,8 +446,8 @@ Proof.
       destruct (unification_step t1 t2) eqn:eq.
       + exists None. constructor. assumption.
       + exists (Some empty_subst). constructor. assumption.
-      + specialize (H (apply' (singleton_subst n t) t1, apply' (singleton_subst n t) t2)).
-        assert (fvOr : fvOrderRel (apply' (singleton_subst n t) t1, apply' (singleton_subst n t) t2) (t1, t2)).
+      + specialize (H (apply_subst (singleton_subst n t) t1, apply_subst (singleton_subst n t) t2)).
+        assert (fvOr : fvOrderRel (apply_subst (singleton_subst n t) t1, apply_subst (singleton_subst n t) t2) (t1, t2)).
         { apply unification_step_decreases_fv. assumption. }
         specialize (H fvOr). destruct H. destruct x.
         - eexists. eapply unify_SubstSome.
@@ -498,7 +514,7 @@ Proof.
       intros. inversion H0; subst; clear H0.
       + unfold unifier. rewrite apply_empty. rewrite apply_empty.
         apply fine_step_equal_terms. assumption.
-      + assert (fvOr : fvOrderRel (apply' (singleton_subst n s0) t1, apply' (singleton_subst n s0) t2) (t1, t2)).
+      + assert (fvOr : fvOrderRel (apply_subst (singleton_subst n s0) t1, apply_subst (singleton_subst n s0) t2) (t1, t2)).
         { apply unification_step_decreases_fv. assumption. }
         eapply H in fvOr.
         2: { eassumption. }
@@ -512,7 +528,7 @@ Lemma unification_step_binds :
   forall t1 t2 x t s,
     unification_step t1 t2 = Subst x t ->
     unifier s t1 t2 ->
-    apply' s (Var x) = apply' s t.
+    apply_subst s (Var x) = apply_subst s t.
 Proof.
   induction t1; induction t2; intros; simpl in H.
   * destruct (Nat.eq_dec n n0).
@@ -539,7 +555,7 @@ Lemma unification_step_binds_2 :
   forall t1 t2 x t s,
     unification_step t1 t2 = Subst x t ->
     unifier s t1 t2 ->
-    forall t', apply' s t' = apply' s (apply' (singleton_subst x t) t').
+    forall t', apply_subst s t' = apply_subst s (apply_subst (singleton_subst x t) t').
 Proof.
   intros. specialize (unification_step_binds t1 t2 x t s H H0). intro.
   induction t'.
@@ -570,7 +586,7 @@ Proof.
 Qed.
 
 Lemma occurs_subst_height: forall s n t,
-  occurs n t = true -> height (apply' s (Var n)) <= height (apply' s t).
+  occurs n t = true -> height (apply_subst s (Var n)) <= height (apply_subst s t).
 Proof.
   intros. induction t.
   * simpl in H. apply Nat.eqb_eq in H. subst. reflexivity.
@@ -585,7 +601,7 @@ Qed.
 Lemma occurs_check_ground :
   forall x t s,
     occurs x t = true ->
-    apply' s (Var x) = apply' s t ->
+    apply_subst s (Var x) = apply_subst s t ->
     Var x = t.
 Proof.
   intros x t. destruct t.
@@ -594,13 +610,13 @@ Proof.
   * intros. exfalso. simpl in H. apply Bool.orb_true_elim in H. destruct H.
     + apply occurs_subst_height with (s := s) in e. rewrite H0 in e.
       simpl in e. apply le_lt_n_Sm in e. apply lt_S_n in e.
-      apply lt_irrefl with (height (apply' s t1)).
+      apply lt_irrefl with (height (apply_subst s t1)).
       eapply le_lt_trans.
       2: { eapply e. }
       apply Nat.le_max_l.
     + apply occurs_subst_height with (s := s) in e. rewrite H0 in e.
       simpl in e. apply le_lt_n_Sm in e. apply lt_S_n in e.
-      apply lt_irrefl with (height (apply' s t2)).
+      apply lt_irrefl with (height (apply_subst s t2)).
       eapply le_lt_trans.
       2: { eapply e. }
       apply Nat.le_max_r.
