@@ -15,26 +15,22 @@ Inductive goal : Set :=
 (* invoke      *) | Invoke : name -> term -> goal.
 
 (* Free variable monadic enumerator *)
-Fixpoint fvm (n : name) (g : goal) : list name * name :=
-  match g with
-  | Fail        => ([], n)
-  | Unify t1 t2 => (var_set_union (fv_term t1) (fv_term t2), n)
-  | Disj  g1 g2
-  | Conj  g1 g2 => let (s1, n1) := fvm n  g1 in
-                   let (s2, n2) := fvm n1 g2 in
-                   (var_set_union s1 s2, n2)
-  | Fresh fg    => let g := fg n in
-                   let (ts, n') := fvm (S n) g in
-                   (var_set_remove n ts, n')
-  | Invoke _ t => (fv_term t, n)
-  end.
+Inductive is_fv_of_goal (n : name) : goal -> Prop :=
+| fvUnifyL : forall t1 t2 (HInFv : In n (fv_term t1)),  is_fv_of_goal n (Unify t1 t2)
+| fvUnifyR : forall t1 t2 (HInFv : In n (fv_term t2)),  is_fv_of_goal n (Unify t1 t2)
+| fvDisjL  : forall g1 g2 (HisFV : is_fv_of_goal n g1), is_fv_of_goal n (Disj g1 g2)
+| fvDisjR  : forall g1 g2 (HisFV : is_fv_of_goal n g2), is_fv_of_goal n (Disj g1 g2)
+| fvConjL  : forall g1 g2 (HisFV : is_fv_of_goal n g1), is_fv_of_goal n (Conj g1 g2)
+| fvConjR  : forall g1 g2 (HisFV : is_fv_of_goal n g2), is_fv_of_goal n (Conj g1 g2)
+| fvFresh  : forall fg n' (neq : n' <> n)
+                          (HisFV : is_fv_of_goal n (fg n')), is_fv_of_goal n (Fresh fg)
+| fvInvoke : forall r arg (HInFv : In n (fv_term arg)), is_fv_of_goal n (Invoke r arg).
 
-(* Free variables enumerator *)
-Definition fv_goal n g := fst (fvm n g).
+Hint Constructors is_fv_of_goal.
 
 (* Closedness of goals *)
 Definition closed_goal_in_context (c : list name) (g : goal) : Prop :=
-  forall x n, In x (fv_goal n g) -> In x c.
+  forall n, is_fv_of_goal n g -> In n c.
 
 Definition closed_goal : goal -> Prop := closed_goal_in_context [].
 
@@ -53,25 +49,15 @@ Module SmokeTest.
 
   Lemma g0_closed : closed_goal g0.
   Proof.
-    red. red. intros. unfold fv_goal in H. unfold fvm in H.
-    simpl in H. destruct (name_eq_dec n n).
-    * auto.
-    * contradiction.
+    red. red. intros. inversion H. inversion HisFV.
+    { simpl in HInFv. destruct HInFv; contradiction. }
+    { inversion HInFv. }
   Qed.
 
   Lemma g1_closed : closed_goal g1.
   Proof.
-    red. red. intros. unfold fv_goal in H. unfold fvm in H.
-    simpl in H. destruct n.
-    * auto.
-    * destruct (name_eq_dec (S n) n).
-      + omega.
-      + unfold var_set_remove in H.
-        unfold set_remove in H.
-        destruct (name_eq_dec (S (S n)) (S n));
-        destruct (name_eq_dec (S (S n)) (S (S n)));
-        destruct (name_eq_dec (S n) (S n));
-        try omega. auto.
+    red. red. intros. inversion H. inversion HisFV.
+    inversion HisFV0; inversion HInFv; contradiction.
   Qed.
 
   Definition r0 : rel := (fun t => Fresh (fun x => Fresh (fun y =>
@@ -80,43 +66,25 @@ Module SmokeTest.
 
   Lemma r0_closed : closed_rel r0.
   Proof.
-    red. red. intros. unfold fv_goal in H. unfold fvm in H.
-    red in H. red in H. red in H. fold In in H.
-    assert (NoDup (var_set_union
-               (var_set_union (fv_term arg)
-                  (fv_term (Con 0 (Var n) (Var (S n)))))
-               (var_set_union (fv_term (Var n))
-                  (fv_term (Var (S n)))))).
-    { apply set_union_nodup; apply set_union_nodup; apply fv_term_nodup. }
-    assert (NoDup
-       (var_set_remove (S n)
-            (var_set_union
-               (var_set_union (fv_term arg)
-                  (fv_term (Con 0 (Var n) (Var (S n)))))
-               (var_set_union (fv_term (Var n))
-                  (fv_term (Var (S n))))))).
-    { apply set_remove_nodup. auto. }
-    unfold var_set_remove in H.
-    apply (set_remove_iff name_eq_dec _ _ H1) in H. destruct H.
-    apply (set_remove_iff name_eq_dec _ _ H0) in H. destruct H.
-    unfold var_set_union in H. apply set_union_elim in H. destruct H.
-    + apply set_union_elim in H. destruct H.
-      - auto.
-      - simpl in H. destruct n.
-        { destruct H; try omega. destruct H; try omega. inversion H. }
-        { destruct (name_eq_dec (S n) n); try omega.
-          destruct H; try omega. destruct H; try omega. inversion H. }
-    + simpl in H. destruct n.
-      { destruct H; try omega. destruct H; try omega. inversion H. }
-      { destruct (name_eq_dec (S n) n); try omega.
-        destruct H; try omega. destruct H; try omega. inversion H. }
+    red. red. intros. inversion H. inversion HisFV.
+    inversion HisFV0.
+    { inversion HisFV; auto. inversion HisFV2; inversion HisFV3.
+      { auto. }
+      { simpl in HInFv. destruct (name_eq_dec n'1 n').
+        { inversion HInFv; contradiction. }
+        { inversion HInFv; try contradiction. inversion H0; contradiction. } }
+      { inversion HInFv; contradiction. }
+      { inversion HInFv; contradiction. } }
+    { inversion HisFV1; inversion HInFv; contradiction. }
   Qed.
 
   Lemma r1_non_closed : ~ closed_rel r1.
   Proof.
     intro C. red in C. red in C.
-    specialize (C (Cst 0) 0 1). apply C.
-    simpl. auto.
+    specialize (C (Cst 0) 0). apply C.
+    unfold r1. apply fvFresh with 1.
+    { omega. }
+    { constructor. left. auto. }
   Qed.
 
 End SmokeTest.

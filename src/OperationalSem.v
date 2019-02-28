@@ -3,6 +3,9 @@ Require Import List.
 Require Import Unify.
 Require Import MiniKanrenSyntax.
 Require Import Stream.
+Require Import Omega.
+
+Ltac good_inversion H := inversion H; clear H; subst.
 
 (* Partial state *) 
 Inductive state' : Set :=
@@ -15,6 +18,48 @@ Inductive state : Set :=
 (* end of evaluation *) | Stop  : state
 (* a partial state   *) | State : state' -> state.
 
+Inductive is_fv_of_state' : name -> state' -> Prop :=
+| isfvst'Leaf  : forall x g s n     (isfvH : is_fv_of_goal x g),      is_fv_of_state' x (Leaf g s n)
+| isfvst'SumL  : forall x st'1 st'2 (isfvH : is_fv_of_state' x st'1), is_fv_of_state' x (Sum st'1 st'2)
+| isfvst'SumR  : forall x st'1 st'2 (isfvH : is_fv_of_state' x st'2), is_fv_of_state' x (Sum st'1 st'2)
+| isfvst'ProdL : forall x st' g     (isfvH : is_fv_of_state' x st'),  is_fv_of_state' x (Prod st' g)
+| isfvst'ProdR : forall x st' g     (isfvH : is_fv_of_goal x g),      is_fv_of_state' x (Prod st' g).
+
+Hint Constructors is_fv_of_state'.
+
+Inductive is_fv_of_state : name -> state -> Prop :=
+| isfvstC : forall x st' (isfv'H : is_fv_of_state' x st'), is_fv_of_state x (State st').
+
+Hint Constructors is_fv_of_state.
+
+Inductive is_counter_of_state' : nat -> state' -> Prop :=
+| iscst'Leaf  : forall g s n,                                            is_counter_of_state' n (Leaf g s n)
+| iscst'SumL  : forall n st'1 st'2 (iscH : is_counter_of_state' n st'1), is_counter_of_state' n (Sum st'1 st'2)
+| iscst'SumR  : forall n st'1 st'2 (iscH : is_counter_of_state' n st'2), is_counter_of_state' n (Sum st'1 st'2)
+| iscst'Prod  : forall n st' g     (iscH : is_counter_of_state' n st'),  is_counter_of_state' n (Prod st' g).
+
+Hint Constructors is_counter_of_state'.
+
+Inductive well_formed_state' : state' -> Set :=
+| wfLeaf : forall g s frn   (freshCorrect : forall x, is_fv_of_goal x g -> x < frn),
+                            well_formed_state' (Leaf g s frn)
+| wfSum  : forall st'1 st'2 (wfst'1 : well_formed_state' st'1)
+                            (wfst'2 : well_formed_state' st'2),
+                            well_formed_state' (Sum st'1 st'2)
+| wfProd : forall st' g     (wfst': well_formed_state' st')
+                            (freshCorrect : forall x frn, is_counter_of_state' frn st' ->
+                                                          is_fv_of_goal x g ->
+                                                          x < frn),
+                            well_formed_state' (Prod st' g).
+
+Hint Constructors well_formed_state'.
+
+Inductive well_formed_state : state -> Set :=
+| wfEmpty    : well_formed_state Stop
+| wfNonEmpty : forall st' (wfState : well_formed_state' st'), well_formed_state (State st').
+
+Hint Constructors well_formed_state.
+
 (* Labels *)
 Inductive label : Set :=
 (* nothing                                       *) | Step   : label
@@ -22,43 +67,11 @@ Inductive label : Set :=
 
 Variable P : spec.
 
-(*
-Definition well_formed_goal : goal -> Set :=
-| wfUnify  : forall t1 t2, well_formed_goal (Unify t1 t2)
-| wfDisj   : forall g1 g2, well_formed_goal g1 -> well_formed_goal g2 -> well_formed_goal (Disj g1 g2)
-| wfConj   : forall g1 g2, well_formed_goal g1 -> well_formed_goal g2 -> well_formed_goal (Conj g1 g2)
-| wfFresh  : forall fg, (forall n, well_formed_goal (fg n)) -> well_formed_goal (Fresh fg)
-| wfInvoke : forall f arg, {r & {cl & find (fun x => Nat.eqb (fst x) f) P = Some (f, Def r cl)}} ->
-                           well_formed_goal (Invoke f arg).
-
-Hint Constructors well_formed_goal.
-
-Variable P_well_formed : forall f r cl arg, In (f, Def r cl) P -> well_formed_goal (r arg).
-
-Inductive well_formed_state' : state' -> Set :=
-| wfLeaf : forall g s n,     well_formed_goal g ->
-                             well_formed_state' (Leaf g s n)
-| wfSum  : forall st'1 st'2, well_formed_state' st'1 ->
-                             well_formed_state' st'2 ->
-                             well_formed_state' (Sum st'1 st'2)
-| wfProd : forall st' g,     well_formed_state' st' ->
-                             well_formed_goal g ->
-                             well_formed_state' (Prod st' g).
-
-Hint Constructors well_formed_state'.
-
-Inductive well_formed_state : state -> Set :=
-| wfEmpty    : well_formed_state Stop
-| wfNonEmpty : forall st', well_formed_state' st' -> well_formed_state (State st').
-
-Hint Constructors well_formed_state.
-*)
-
 (* Transitions *)
 Inductive eval_step : state' -> label -> state -> Set :=
 | FailS        : forall           s    n, eval_step (Leaf Fail s n) Step Stop
 | UnifyFail    : forall t1 t2     s    n, unify (apply_subst s t1) (apply_subst s t2) None      -> eval_step (Leaf (Unify t1 t2) s n) Step Stop
-| UnifySuccess : forall t1 t2     s s' n, unify (apply_subst s t1) (apply_subst s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s' s) n) Stop
+| UnifySuccess : forall t1 t2     s s' n, unify (apply_subst s t1) (apply_subst s t2) (Some s') -> eval_step (Leaf (Unify t1 t2) s n) (Answer (compose s s') n) Stop
 | DisjS        : forall g1 g2     s    n, eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
 | ConjS        : forall g1 g2     s    n, eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
 | FreshS       : forall fg        s    n, eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
@@ -72,23 +85,101 @@ Inductive eval_step : state' -> label -> state -> Set :=
 
 Hint Constructors eval_step.
 
-(*
-Lemma well_formedness_preservation :
-  forall (st' : state') (l : label) (st : state),
-    eval_step st' l st -> well_formed_state' st' -> well_formed_state st.
+Lemma counter_in_answer
+      (st' : state')
+      (s : subst)
+      (n : nat)
+      (st : state)
+      (EV : eval_step st' (Answer s n) st) :
+      is_counter_of_state' n st'.
 Proof.
-  intros. induction H.
-  1,2,9 : auto.
-  1-3: inversion H0; inversion H1; auto.
-  * apply find_some in e. destruct e.
-    constructor. constructor. eapply P_well_formed. eauto.
-  * inversion H0; subst; auto.
-  * inversion H0; subst; apply IHeval_step in H3; inversion H3; auto.
-  * inversion H0; subst; auto.
-  * inversion H0; subst; apply IHeval_step in H3; inversion H3; auto.
-  * inversion H0; subst; apply IHeval_step in H3; inversion H3; auto.
+  remember (Answer s n). induction EV; good_inversion Heql; auto.
 Qed.
-*)
+
+Lemma counter_in_next_state
+      (n : nat)
+      (st' st'_next : state')
+      (l : label)
+      (EV : eval_step st' l (State st'_next))
+      (Hisc_st' :  is_counter_of_state' n st'_next) :
+      exists n', n' <= n /\ is_counter_of_state' n' st'.
+Proof.
+  remember (State st'_next) as st.
+  revert Heqst Hisc_st'. revert st'_next.
+  induction EV; intros; good_inversion Heqst.
+  { exists n. split.
+    { constructor. }
+    { good_inversion Hisc_st'; good_inversion iscH; auto. } }
+  { exists n. split.
+    { constructor. }
+    { good_inversion Hisc_st'; good_inversion iscH; auto. } }
+  { good_inversion Hisc_st'. exists n0. split.
+    { repeat constructor. }
+    { auto. } }
+  { exists n. split.
+    { constructor. }
+    { good_inversion Hisc_st'; auto. } }
+  { exists n. split.
+    { constructor. }
+    { auto. } }
+  { specialize (IHEV st1' eq_refl). good_inversion Hisc_st'.
+    { exists n. split.
+      { constructor. }
+      { auto. } }
+    { apply IHEV in iscH. destruct iscH as [n' [Hle iscH]].
+      exists n'; auto. } }
+  { good_inversion Hisc_st'. exists n0.
+    eapply counter_in_answer in EV. split; auto. }
+  { specialize (IHEV st' eq_refl). good_inversion Hisc_st'.
+    apply IHEV in iscH. destruct iscH as [n' [Hle iscH]].
+    exists n'; auto.  }
+  { specialize (IHEV st' eq_refl). good_inversion Hisc_st'.
+    { good_inversion iscH. exists n0.
+      eapply counter_in_answer in EV. split; auto. }
+    { good_inversion iscH. apply IHEV in iscH0.
+      destruct iscH0 as [n' [Hle iscH]]. exists n'; auto. } }
+Qed.
+
+Lemma well_formedness_preservation
+      (st' : state')
+      (l : label)
+      (st : state)
+      (EV : eval_step st' l st)
+      (wf_st' : well_formed_state' st') :
+      well_formed_state st.
+Proof.
+  intros. induction EV; auto.
+  { good_inversion wf_st'. constructor. auto. }
+  { good_inversion wf_st'. constructor. constructor; auto.
+    intros. good_inversion H. subst. auto. }
+  { good_inversion wf_st'. constructor. constructor. intros.
+    destruct (eq_nat_dec n x).
+    { omega. }
+    { apply Nat.lt_lt_succ_r. apply freshCorrect. econstructor; eauto. } }
+  { good_inversion wf_st'. constructor. constructor.
+    specialize (proj2_sig (P r)). intro Hcl.
+    red in Hcl. red in Hcl. auto. }
+  { good_inversion wf_st'. auto. }
+  { good_inversion wf_st'. specialize (IHEV wfst'1).
+    good_inversion IHEV. auto. }
+  { good_inversion wf_st'. constructor. constructor.
+    intros. apply freshCorrect; auto. eapply counter_in_answer; eauto. }
+  { good_inversion wf_st'. specialize (IHEV wfst').
+    good_inversion IHEV. constructor. constructor; auto. intros.
+    eapply counter_in_next_state in EV; eauto.
+    destruct EV as [frn' [Hle Hisc]]. eapply lt_le_trans.
+    2: eauto.
+    apply freshCorrect; auto. }
+  { good_inversion wf_st'. specialize (IHEV wfst').
+    good_inversion IHEV. constructor. constructor.
+    { constructor. intros. apply freshCorrect; auto.
+      eapply counter_in_answer; eauto. }
+    { constructor; auto. intros.
+      eapply counter_in_next_state in EV; eauto.
+      destruct EV as [frn' [Hle Hisc]]. eapply lt_le_trans.
+      2: eauto.
+      apply freshCorrect; auto. } }
+Qed.
 
 Lemma eval_step_exists : forall (st' : state'), {l : label & {st : state & eval_step st' l st}}.
 Proof.
