@@ -3,7 +3,6 @@ Import ListNotations.
 Require Import Stream.
 Require Import Unify.
 Require Import MiniKanrenSyntax.
-Require Import OperationalSem.
 Require Import Omega.
 
 Definition gt_fun : Set := name -> ground_term.
@@ -62,7 +61,6 @@ Proof.
     subst. auto. }
 Qed.
 
-(* Simple variant *)
 Inductive in_denotational_sem_goal : goal -> gt_fun -> Prop :=
 | dsgUnify  : forall f t1 t2 (UnH : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)),
                              in_denotational_sem_goal (Unify t1 t2) f
@@ -77,178 +75,65 @@ Inductive in_denotational_sem_goal : goal -> gt_fun -> Prop :=
                                (Hg : in_denotational_sem_goal (fg a) fn)
                                (Hease : forall (x : name) (neq : x <> a), fn x = f x),
                                in_denotational_sem_goal (Fresh fg) f
-| dsgInvoke : forall r t f (Hbody : in_denotational_sem_goal (proj1_sig (OperationalSem.P r) t) f),
+| dsgInvoke : forall r t f (Hbody : in_denotational_sem_goal (proj1_sig (MiniKanrenSyntax.P r) t) f),
                            in_denotational_sem_goal (Invoke r t) f.
 
 Hint Constructors in_denotational_sem_goal.
 
-(**)
+Inductive in_denotational_sem_lev_goal : nat -> goal -> gt_fun -> Prop :=
+| dslgUnify  : forall l f t1 t2 (UnH : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)),
+                              in_denotational_sem_lev_goal (S l) (Unify t1 t2) f
+| dslgDisjL  : forall l f g1 g2 (Hg :in_denotational_sem_lev_goal l g1 f),
+                               in_denotational_sem_lev_goal l (Disj g1 g2) f
+| dslgDisjR  : forall l f g1 g2 (Hg :in_denotational_sem_lev_goal l g2 f),
+                               in_denotational_sem_lev_goal l (Disj g1 g2) f
+| dslgConj   : forall l f g1 g2 (Hg1 :in_denotational_sem_lev_goal l g1 f)
+                                (Hg2 :in_denotational_sem_lev_goal l g2 f),
+                               in_denotational_sem_lev_goal l (Conj g1 g2) f
+| dslgFresh  : forall l f fn a fg (fvH : ~ is_fv_of_goal a (Fresh fg))
+                                  (Hg :in_denotational_sem_lev_goal l (fg a) fn)
+                                  (Hease : forall (x : name) (neq : x <> a), fn x = f x),
+                                 in_denotational_sem_lev_goal l (Fresh fg) f
+| dslgInvoke : forall l r t f (Hbody :in_denotational_sem_lev_goal l (proj1_sig (MiniKanrenSyntax.P r) t) f),
+                             in_denotational_sem_lev_goal (S l) (Invoke r t) f.
 
-(* Variant with levels * )
+Hint Constructors in_denotational_sem_lev_goal.
 
-Inductive in_denotational_sem_with_env (env_in : name -> term -> gt_fun -> Prop) : gt_fun ->
-                                                                                     goal ->
-                                                                                     Prop :=
-| dsEnvUnify  : forall f t1 t2 (UnH : apply_gt_fun f t1 = apply_gt_fun f t2),
-                               in_denotational_sem_with_env env_in f (Unify t1 t2)
-| dsEnvDisjL  : forall f g1 g2 (Hg : in_denotational_sem_with_env env_in f g1),
-                               in_denotational_sem_with_env env_in f (Disj g1 g2)
-| dsEnvDisjR  : forall f g1 g2 (Hg : in_denotational_sem_with_env env_in f g2),
-                               in_denotational_sem_with_env env_in f (Disj g1 g2)
-| dsEnvConj   : forall f g1 g2 (Hg1 : in_denotational_sem_with_env env_in f g1)
-                               (Hg2 : in_denotational_sem_with_env env_in f g2),
-                               in_denotational_sem_with_env env_in f (Conj g1 g2)
-| dsEnvFresh  : forall f fn a fg (fvH : forall n, ~ In a (fv_goal n (Fresh fg)))
-                                 (Hg : in_denotational_sem_with_env env_in fn (fg a))
-                                 (Hease : forall (x : name) (neq : x <> a), fn x = f x),
-                                 in_denotational_sem_with_env env_in f (Fresh fg)
-| dsEnvInvoke : forall r t f (Henv : env_in r t f),
-                             in_denotational_sem_with_env env_in f (Invoke r t).
-
-Inductive in_denotational_sem_lev : nat -> gt_fun -> goal -> Prop :=
-| dsLev : forall lev f g (dsEnvH : in_denotational_sem_with_env (fun r t f => in_denotational_sem_lev lev f (proj1_sig (P r) t)) f g),
-                         in_denotational_sem_lev (S lev) f g.
-
-Definition in_denotational_sem (f : gt_fun) (g : goal) : Prop := exists lev, in_denotational_sem_lev lev f g.
-( **)
-
-Definition in_denotational_sem_subst (s : subst) (f : gt_fun) : Prop :=
-  exists (f' : gt_fun), gt_fun_eq (subst_gt_fun_compose s f') f.
-
-Inductive in_denotational_sem_state' : state' -> gt_fun -> Prop :=
-| dsst'Leaf : forall g s n f (Hgoal : in_denotational_sem_goal g f)
-                             (Hsubst : in_denotational_sem_subst s f),
-                             in_denotational_sem_state' (Leaf g s n) f
-| dsst'SumL : forall st1' st2' f (Hst1' : in_denotational_sem_state' st1' f),
-                                 in_denotational_sem_state' (Sum st1' st2') f
-| dsst'SumR : forall st1' st2' f (Hst2' : in_denotational_sem_state' st2' f),
-                                 in_denotational_sem_state' (Sum st1' st2') f
-| dsst'Prod : forall st' g f (Hgoal : in_denotational_sem_goal g f)
-                             (Hst' : in_denotational_sem_state' st' f),
-                             in_denotational_sem_state' (Prod st' g) f.
-
-Hint Constructors in_denotational_sem_state'.
-
-Inductive in_denotational_sem_state : state -> gt_fun -> Prop :=
-| dsstState : forall st' f (Hst' : in_denotational_sem_state' st' f),
-                           in_denotational_sem_state (State st') f.
-
-Hint Constructors in_denotational_sem_state.
-
-Definition in_denotational_analog (t : trace) (f : gt_fun) : Prop :=
-  exists (s : subst) (n : nat), in_stream (Answer s n) t /\ in_denotational_sem_subst s f.
-
-Lemma answer_correct
-      (s : subst)
-      (n : nat)
-      (f : gt_fun)
-      (HInDS : in_denotational_sem_subst s f)
-      (st' : state')
-      (st : state)
-      (EV : eval_step st' (Answer s n) st) :
-      in_denotational_sem_state' st' f.
+Lemma in_denotational_sem_zero_lev (g : goal)
+                                   (f : gt_fun) :
+                                   ~ in_denotational_sem_lev_goal 0 g f.
 Proof.
-  remember (Answer s n) as l.
-  induction EV; good_inversion Heql.
-  2, 3: auto.
-  destruct HInDS as [f' ff'_con].
-  constructor.
-  { constructor. red.
-    specialize (gt_fun_eq_apply _ _ t1 ff'_con). intro. rewrite <- H.
-    specialize (gt_fun_eq_apply _ _ t2 ff'_con). intro. rewrite <- H0.
-    rewrite gt_fun_apply_compose. rewrite gt_fun_apply_compose.
-    rewrite compose_correctness. rewrite compose_correctness.
-    apply unify_unifies in u. rewrite u. reflexivity. }
-  { red. exists (subst_gt_fun_compose s' f').
-    red. intros. red.
-    red in ff'_con. specialize (ff'_con x). red in ff'_con.
-    rewrite <- ff'_con. unfold subst_gt_fun_compose.
-    replace (fun x0 : name => apply_gt_fun f' (apply_subst s' (Var x0)))
-      with (subst_gt_fun_compose s' f').
-    2: reflexivity.
-    rewrite gt_fun_apply_compose. rewrite compose_correctness.
-    reflexivity. }
+  intro. remember 0 as l. induction H; inversion Heql; auto.
 Qed.
 
-Lemma next_state_correct
-      (f : gt_fun)
-      (st : state)
-      (HInDS : in_denotational_sem_state st f)
-      (st' : state')
-      (wfState : well_formed_state' st')
-      (h : label)
-      (EV : eval_step st' h st) :
-      in_denotational_sem_state' st' f.
+Lemma in_denotational_sem_lev_monotone (l : nat)
+                                       (g : goal)
+                                       (f : gt_fun)
+                                       (Hdsg : in_denotational_sem_lev_goal l g f)
+                                       (l' : nat)
+                                       (Hle: l <= l')
+                                       : in_denotational_sem_lev_goal l' g f.
 Proof.
-  induction EV; good_inversion HInDS.
-  { good_inversion Hst'.
-    { good_inversion Hst1'; constructor; auto. }
-    { good_inversion Hst2'; constructor; auto. } }
-  { good_inversion Hst'. good_inversion Hst'0. auto. }
-  { good_inversion wfState. good_inversion Hst'.
-    constructor; auto. econstructor; eauto.
-    intros HIn. apply freshCorrect in HIn. omega. }
-  { good_inversion Hst'. auto. }
-  { auto. }
-  { good_inversion wfState. good_inversion Hst'; auto. }
-  { good_inversion Hst'. constructor; auto.
-    eapply answer_correct; eauto. }
-  { good_inversion wfState. good_inversion Hst'. auto. }
-  { good_inversion wfState. good_inversion Hst'.
-    { good_inversion Hst1'. constructor; auto.
-      eapply answer_correct; eauto. }
-    { good_inversion Hst2'. auto. } }
+  revert Hle. revert l'. induction Hdsg; eauto.
+  { intros. destruct l'; auto. inversion Hle. }
+  { intros. destruct l'.
+    { inversion Hle. }
+    { apply le_S_n in Hle. auto. } }
 Qed.
 
-Lemma search_correctness_generalized
-      (st   : state)
-      (wfSt : well_formed_state st)
-      (f    : gt_fun)
-      (t    : trace)
-      (HOP  : op_sem st t)
-      (HDA  : in_denotational_analog t f) :
-      in_denotational_sem_state st f.
+Lemma in_denotational_sem_some_lev (g : goal)
+                                   (f : gt_fun)
+                                   (Hdsg : in_denotational_sem_goal g f) :
+                                   exists l, in_denotational_sem_lev_goal l g f.
 Proof.
-  revert HOP wfSt. revert st.
-  red in HDA. destruct HDA as [s [n [HInStr HInDS]]].
-  remember (Answer s n) as l. induction HInStr.
-  { intros. inversion HOP; clear HOP; subst.
-    constructor. eapply answer_correct; eauto. }
-  { specialize (IHHInStr Heql). intros.
-    inversion HOP; clear HOP; subst.
-    inversion wfSt; clear wfSt; subst.
-    specialize (well_formedness_preservation _ _ _ EV wfState).
-    intro wf_st0.
-    specialize (IHHInStr st0 OP wf_st0).
-    constructor. eapply next_state_correct; eauto. }
-Qed.
-
-Fixpoint first_nats (k : nat) : list nat :=
-  match k with
-  | 0   => []
-  | S n => n :: first_nats n
-  end.
-
-Lemma first_nats_less (n k : nat) (H : In n (first_nats k)) : n < k.
-Proof.
-  induction k.
-  { inversion H. }
-  { inversion H. { omega. } { apply IHk in H0. omega. } }
-Qed.
-
-Lemma search_correctness
-      (g   : goal)
-      (k   : nat)
-      (HC  : closed_goal_in_context (first_nats k) g)
-      (f   : gt_fun)
-      (t   : trace)
-      (HOP : op_sem (State (Leaf g empty_subst k)) t)
-      (HDA : in_denotational_analog t f) : in_denotational_sem_goal g f.
-Proof.
-  remember (State (Leaf g empty_subst k)) as st.
-  assert (in_denotational_sem_state st f).
-  { eapply search_correctness_generalized; eauto.
-    subst. constructor. constructor.
-    intros. apply HC in H. apply first_nats_less. auto. }
-  subst. inversion H. inversion Hst'. auto.
+  induction Hdsg.
+  { exists 1. auto. }
+  { destruct IHHdsg. eauto. }
+  { destruct IHHdsg. eauto. }
+  { destruct IHHdsg1. destruct IHHdsg2.
+    exists (max x x0). constructor.
+    { eapply in_denotational_sem_lev_monotone; eauto. apply PeanoNat.Nat.le_max_l. }
+    { eapply in_denotational_sem_lev_monotone; eauto. apply PeanoNat.Nat.le_max_r. } }
+  { destruct IHHdsg. eauto. }
+  { destruct IHHdsg. eauto. }
 Qed.

@@ -1,5 +1,4 @@
 Require Import List.
-(*Require Import Program.*)
 Require Import Unify.
 Require Import MiniKanrenSyntax.
 Require Import Stream.
@@ -65,8 +64,6 @@ Inductive label : Set :=
 (* nothing                                       *) | Step   : label
 (* answer: (subst, first free semantic variable) *) | Answer : subst -> nat -> label.
 
-Variable P : spec.
-
 (* Transitions *)
 Inductive eval_step : state' -> label -> state -> Set :=
 | FailS        : forall           s    n, eval_step (Leaf Fail s n) Step Stop
@@ -75,7 +72,7 @@ Inductive eval_step : state' -> label -> state -> Set :=
 | DisjS        : forall g1 g2     s    n, eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
 | ConjS        : forall g1 g2     s    n, eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
 | FreshS       : forall fg        s    n, eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
-| InvokeS      : forall r arg     s    n, eval_step (Leaf (Invoke r arg) s n) Step (State (Leaf (proj1_sig (P r) arg) s n))
+| InvokeS      : forall r arg     s    n, eval_step (Leaf (Invoke r arg) s n) Step (State (Leaf (proj1_sig (MiniKanrenSyntax.P r) arg) s n))
 | SumE         : forall st1 st2        l (H: eval_step st1 l  Stop), eval_step (Sum st1 st2) l (State st2)
 | SumNE        : forall st1 st1' st2   l, eval_step st1 l (State st1')             -> eval_step (Sum st1 st2) l (State (Sum st2 st1'))
 | ProdSE       : forall st g            , eval_step st     Step         Stop       -> eval_step (Prod st g) Step Stop
@@ -157,7 +154,7 @@ Proof.
     { omega. }
     { apply Nat.lt_lt_succ_r. apply freshCorrect. econstructor; eauto. } }
   { good_inversion wf_st'. constructor. constructor.
-    specialize (proj2_sig (P r)). intro Hcl.
+    specialize (proj2_sig (MiniKanrenSyntax.P r)). intro Hcl.
     red in Hcl. red in Hcl. auto. }
   { good_inversion wf_st'. auto. }
   { good_inversion wf_st'. specialize (IHEV wfst'1).

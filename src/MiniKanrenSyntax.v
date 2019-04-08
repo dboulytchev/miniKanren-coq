@@ -94,3 +94,5 @@ Definition def : Set := {r : rel | closed_rel r}.
 
 (* spec is a list of definitions *)
 Definition spec : Set := name -> def.
+
+Variable P : spec.
