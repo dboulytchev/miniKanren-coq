@@ -1,6 +1,5 @@
-Add LoadPath "~/JB/minikanren-coq/src/".
-
 Require Import List.
+Require Import Coq.Lists.ListSet.
 Import ListNotations.
 Require Import Stream.
 Require Import Unify.
@@ -150,26 +149,141 @@ Proof.
   subst. inversion H. inversion Hst'. auto.
 Qed.
 
+Lemma set_empty_union
+      (s1 s2 : var_set)
+      (eq : var_set_union s1 s2 = var_set_empty) :
+      s1 = var_set_empty /\ s2 = var_set_empty.
+Proof.
+  split.
+  { destruct s1; auto.
+    assert (In n var_set_empty).
+    { rewrite <- eq. apply set_union_intro. left. constructor. auto. }
+    inversion H. }
+  { destruct s2; auto.
+    assert (In n var_set_empty).
+    { rewrite <- eq. apply set_union_intro. right. constructor. auto. }
+    inversion H. }
+Qed.
+
+Lemma map_image
+      (f : name -> term)
+      (v : var_set)
+      (x : name)
+      (HIn : In x v) :
+      image (map (fun x0 : name => (x0, f x0)) v) x = Some (f x).
+Proof.
+  induction v.
+  { contradiction. }
+  { simpl. destruct (Nat.eq_dec a x).
+    { subst. auto. }
+    { apply IHv. destruct HIn; auto. contradiction. } }
+Qed.
+
+Lemma subst_of_gt
+      (t : term)
+      (s : subst)
+      (f : gt_fun)
+      (H : forall x : name, In x (fv_term t) -> image s x = Some (proj1_sig (f x))) :
+      apply_subst s t = proj1_sig (apply_gt_fun f t).
+Proof.
+  induction t.
+  { simpl. replace (image s n) with (Some (proj1_sig (f n))).
+    { auto. }
+    { symmetry. apply H. constructor. auto. } }
+  { auto. }
+  { simpl.
+    destruct (apply_gt_fun f t1).
+    destruct (apply_gt_fun f t2).
+    simpl.
+    replace x with (apply_subst s t1).
+    { replace x0 with (apply_subst s t2).
+      { auto. }
+      { apply IHt2. intros. apply H.
+        apply set_union_intro2. auto. } }
+    { apply IHt1. intros. apply H.
+      apply set_union_intro1. auto. } }
+Qed.
+
 Lemma unfier_from_gt_unifier
       (t1 t2 : term)
       (f : gt_fun)
       (f_unifies : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)) :
       exists s, unifier s t1 t2 /\ in_denotational_sem_subst s f.
-Proof. admit. Admitted.
+Proof.
+  remember (map (fun x => (x, proj1_sig (f x))) (var_set_union (fv_term t1) (fv_term t2))) as s.
+  exists s. split.
+  { red. red in f_unifies.
+    assert (apply_subst s t1 = proj1_sig (apply_gt_fun f t1)).
+    { clear f_unifies.
+      assert (forall x, In x (fv_term t1) -> image s x = Some (proj1_sig (f x))).
+      { intros. assert (In x (var_set_union (fv_term t1) (fv_term t2))).
+        { apply set_union_intro1. auto. }
+        remember (var_set_union (fv_term t1) (fv_term t2)).
+        subst. apply map_image. auto. }
+      apply subst_of_gt. auto. }
+    assert (apply_subst s t2 = proj1_sig (apply_gt_fun f t2)).
+    { clear f_unifies.
+      assert (forall x, In x (fv_term t2) -> image s x = Some (proj1_sig (f x))).
+      { intros. assert (In x (var_set_union (fv_term t1) (fv_term t2))).
+        { apply set_union_intro2. auto. }
+        remember (var_set_union (fv_term t1) (fv_term t2)).
+        subst. apply map_image. auto. }
+      apply subst_of_gt. auto. }
+    congruence. }
+  { red. exists f. red. intros x. unfold subst_gt_fun_compose.
+    unfold apply_subst. destruct (image s x) eqn:eq.
+    { destruct (f x) eqn:eqfx.
+      assert (x0 = t).
+      { unfold image in eq.
+        remember (var_set_union (fv_term t1) (fv_term t2)). clear Heqv.
+        revert Heqs. revert v.
+        induction s.
+        { inversion eq. }
+        { intros. destruct a as [y t0]. destruct v; good_inversion Heqs.
+          destruct (Nat.eq_dec n x).
+          { good_inversion eq. rewrite eqfx. auto. }
+          { apply IHs with v; auto. } } }
+      subst. red. simpl. clear eqfx. clear eq. induction t.
+      { inversion e. }
+      { auto. }
+      { simpl in e. apply set_empty_union in e. destruct e.
+        apply IHt1 in H. apply IHt2 in H0. simpl.
+        destruct (apply_gt_fun f t3). simpl in H.
+        destruct (apply_gt_fun f t4). simpl in H0.
+        simpl. subst. auto. } }
+    { red. auto. } }
+Qed.
 
 Lemma gt_fun_eq_trans
       (f1 f2 f3 : gt_fun)
       (eq12 : gt_fun_eq f1 f2)
       (eq23 : gt_fun_eq f2 f3) :
       gt_fun_eq f1 f3.
-Proof. admit. Admitted.
+Proof.
+  revert eq12 eq23. unfold gt_fun_eq. unfold gt_eq. intros.
+  rewrite eq12. auto.
+Qed.
 
 Lemma gt_fun_eq_compose
       (f1 f2 : gt_fun)
       (eq : gt_fun_eq f1 f2)
       (s : subst) :
       gt_fun_eq (subst_gt_fun_compose s f1) (subst_gt_fun_compose s f2).
-Proof. admit. Admitted.
+Proof.
+  unfold gt_fun_eq. unfold gt_fun_eq in eq. unfold subst_gt_fun_compose.
+  intro. induction (apply_subst s (Var x)).
+  { simpl. auto. }
+  { reflexivity. }
+  { unfold gt_eq. simpl.
+    remember (apply_gt_fun f1 t1) as p11. destruct p11.
+    remember (apply_gt_fun f1 t2) as p12. destruct p12.
+    remember (apply_gt_fun f2 t1) as p21. destruct p21.
+    remember (apply_gt_fun f2 t2) as p22. destruct p22.
+    simpl.
+    unfold gt_eq in IHt1. simpl in IHt1. rewrite IHt1.
+    unfold gt_eq in IHt2. simpl in IHt2. rewrite IHt2.
+    auto. }
+Qed.
 
 Lemma gt_fun_compose_eq
       (f : gt_fun)
@@ -193,7 +307,20 @@ Lemma counter_in_answer
       (OP : op_sem (State (Leaf g s n)) tr)
       (HIn : in_stream (Answer sr nr) tr) :
       n <= nr.
-Proof. admit. Admitted.
+Proof.
+  remember (Leaf g s n) as st'.
+  assert (forall n', is_counter_of_state' n' st' -> n <= n').
+  { intros. subst. good_inversion H. auto. }
+  clear Heqst'. revert H OP. revert n st'.
+  remember (Answer sr nr). induction HIn; intros; subst.
+  { good_inversion OP. apply counter_in_answer in EV. auto. }
+  { good_inversion OP. destruct st.
+    { good_inversion OP0. good_inversion HIn. }
+    { apply IHHIn with s0; auto. intros.
+      specialize (counter_in_next_state _ _ _ _ EV H0). intros.
+      destruct H1. destruct H1. apply H in H2.
+      eapply le_trans; eauto. } }
+Qed.
 
 Lemma prod_op_sem_in
       (st' : state')
@@ -208,14 +335,60 @@ Lemma prod_op_sem_in
       (HIn1 : in_stream (Answer s n) t1)
       (HIn2 : in_stream r t2) :
       in_stream r t.
-Proof. admit. Admitted.
+Proof.
+  revert OP OP1. revert t st'. remember (Answer s n) as r1.
+  induction HIn1; intros; subst.
+  { good_inversion OP1. good_inversion OP.
+    good_inversion EV0; specialize (eval_step_unique _ _ _ _ _ EV H3);
+    intro eqs; destruct eqs; subst; good_inversion H.
+    { constructor. specialize (op_sem_unique _ _ _ OP2 OP1).
+      intros. eapply in_equal_streams; eauto. }
+    { constructor. specialize (op_sem_exists (State (Leaf g s0 n0))).
+      intro H. destruct H as [t3 OP3].
+      specialize (op_sem_exists (State (Prod st'0 g))).
+      intro H. destruct H as [t4 OP4].
+      specialize (sum_op_sem _ _ _ _ _ OP3 OP4 OP1).
+      intro interH. eapply interleave_in in interH.
+      eapply interH. left. specialize (op_sem_unique _ _ _ OP2 OP3).
+      intros. eapply in_equal_streams; eauto. } }
+  { specialize (IHHIn1 eq_refl).
+    good_inversion OP1. good_inversion OP.
+    good_inversion EV0; specialize (eval_step_unique _ _ _ _ _ EV H3);
+    intro eqs; destruct eqs; subst.
+    1-2: good_inversion OP0; good_inversion HIn1.
+    { constructor. eapply IHHIn1; eauto. }
+    { constructor. specialize (op_sem_exists (State (Leaf g s0 n0))).
+      intro H. destruct H as [t3 OP3].
+      specialize (op_sem_exists (State (Prod st'0 g))).
+      intro H. destruct H as [t4 OP4].
+      specialize (sum_op_sem _ _ _ _ _ OP3 OP4 OP1).
+      intro interH. eapply interleave_in in interH.
+      eapply interH. right. eapply IHHIn1; eauto. } }
+Qed.
 
 Lemma apply_gt_fun_fv
       (f1 f2 : gt_fun)
       (t : term)
-      (f_fv_eq : forall x, (In x (fv_term t)) -> f1 x = f2 x) :
+      (f_fv_eq : forall x, (In x (fv_term t)) -> gt_eq (f1 x) (f2 x)) :
       gt_eq (apply_gt_fun f1 t) (apply_gt_fun f2 t).
-Proof. admit. Admitted.
+Proof.
+  induction t.
+  { simpl. apply f_fv_eq. simpl. auto. }
+  { unfold gt_eq. auto. }
+  { unfold gt_eq. simpl.
+    remember (apply_gt_fun f1 t1) as p11. destruct p11.
+    remember (apply_gt_fun f1 t2) as p12. destruct p12.
+    remember (apply_gt_fun f2 t1) as p21. destruct p21.
+    remember (apply_gt_fun f2 t2) as p22. destruct p22.
+    simpl.
+    assert (x = x1).
+    { apply IHt1. intros. apply f_fv_eq. unfold fv_term.
+      apply (set_union_intro name_eq_dec). left. auto. }
+    assert (x0 = x2).
+    { apply IHt2. intros. apply f_fv_eq. unfold fv_term.
+      apply (set_union_intro name_eq_dec). right. auto. }
+    subst. auto. }
+Qed.
 
 Lemma well_formed_subst_in_state_dom
       (g : goal)
@@ -247,7 +420,36 @@ Lemma den_sem_fv_only
       (ff'_eq : forall x, is_fv_of_goal x g -> gt_eq (f x) (f' x))
       (Hgoal : in_denotational_sem_lev_goal l g f) :
       in_denotational_sem_lev_goal l g f'.
-Proof. admit. Admitted.
+Proof.
+  revert ff'_eq. revert f'. induction Hgoal; intros.
+  { constructor. assert (gt_eq (apply_gt_fun f t1) (apply_gt_fun f' t1)).
+    { apply apply_gt_fun_fv. auto. }
+    assert (gt_eq (apply_gt_fun f t2) (apply_gt_fun f' t2)).
+    { apply apply_gt_fun_fv. auto. }
+    revert UnH H H0. unfold gt_eq. intros. congruence. }
+  { constructor. apply IHHgoal. intros.
+    apply ff'_eq. auto. }
+  { apply dslgDisjR. apply IHHgoal. intros.
+    apply ff'_eq. auto. }
+  { constructor.
+    { apply IHHgoal1; intros; apply ff'_eq; auto. }
+    { apply IHHgoal2; intros; apply ff'_eq; auto. } }
+  { remember (fun x => if name_eq_dec x a
+                         then fn a
+                         else f' x) as fn'.
+    apply dslgFresh with fn' a; auto.
+    { apply IHHgoal. intros. rewrite Heqfn'.
+      destruct (name_eq_dec x a).
+      { unfold gt_eq. subst. auto. }
+      { specialize (Hease _ n). rewrite Hease. eauto. } }
+    { rewrite Heqfn'. intros. destruct (name_eq_dec x a); auto.
+      contradiction. } }
+  { constructor. apply IHHgoal. intros.
+    apply ff'_eq. constructor.
+    remember (MiniKanrenSyntax.P r). destruct d as [rel clrH].
+    simpl in H. red in clrH. red in clrH. auto. }
+Qed.
+
 
 Lemma den_sem_another_fresh_var
       (b : name -> goal)
@@ -383,8 +585,9 @@ Proof.
           { specialize (Hease x n1). rewrite Hease.
             red in fssf'_eq. specialize (fssf'_eq x). red in fssf'_eq.
             rewrite <- fssf'_eq. unfold subst_gt_fun_compose.
-            apply apply_gt_fun_fv. intros. destruct (name_eq_dec x0 n); auto.
-            rewrite e in H0. apply H_n_is_fresh in H0. contradiction. } } }
+            apply apply_gt_fun_fv. intros. destruct (name_eq_dec x0 n).
+            { rewrite e in H0. apply H_n_is_fresh in H0. contradiction. } 
+            { unfold gt_eq. auto. } } } }
       specialize (H n fn s (S n) Hgn Hsubstn wfState t0 OP).
       destruct H as [f' [HinDA ff'_eq]]. exists f'. split.
       { red. red in HinDA. destruct HinDA as [s' [n' [Hinstr HDAS]]].
@@ -397,8 +600,9 @@ Proof.
           red in fssf'_eq. specialize (fssf'_eq a). red in fssf'_eq.
           rewrite <- fssf'_eq. unfold subst_gt_fun_compose.
           apply apply_gt_fun_fv. intros. rewrite Heqfs'.
-          destruct (name_eq_dec x0 n); auto. rewrite e0 in H1.
-          apply H_n_is_fresh in H1. subst. contradiction. }
+          destruct (name_eq_dec x0 n).
+          { auto. rewrite e0 in H1. apply H_n_is_fresh in H1. subst. contradiction. }
+          { unfold gt_eq. auto. } }
         { specialize (Hease x n1). rewrite Hease. auto. } } }
     { good_inversion Hgoal. good_inversion HOP. inversion EV; subst.
       apply well_formedness_preservation in EV; auto. good_inversion EV.
