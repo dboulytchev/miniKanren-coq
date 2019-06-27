@@ -290,14 +290,25 @@ Lemma gt_fun_compose_eq
       (s1 s2 : subst)
       (eq : forall t, apply_subst s1 t = apply_subst s2 t) :
       gt_fun_eq (subst_gt_fun_compose s1 f) (subst_gt_fun_compose s2 f).
-Proof. admit. Admitted.
+Proof.
+  unfold gt_fun_eq. unfold subst_gt_fun_compose. unfold gt_eq.
+  intro. rewrite eq. auto.
+Qed.
 
 Lemma subst_gt_fun_compose_assoc_subst
       (f : gt_fun)
       (s s' : subst) :
       gt_fun_eq (subst_gt_fun_compose (compose s s') f)
                 (subst_gt_fun_compose s (subst_gt_fun_compose s' f)).
-Proof. admit. Admitted.
+Proof.
+  unfold gt_fun_eq. intros. unfold gt_eq.
+  replace (subst_gt_fun_compose (compose s s') f x) with
+          (apply_gt_fun (subst_gt_fun_compose (compose s s') f) (Var x)); auto.
+  rewrite gt_fun_apply_compose. rewrite compose_correctness.
+  replace (subst_gt_fun_compose s (subst_gt_fun_compose s' f) x) with
+          (apply_gt_fun (subst_gt_fun_compose s (subst_gt_fun_compose s' f)) (Var x)); auto.
+  rewrite gt_fun_apply_compose. rewrite gt_fun_apply_compose. auto.
+Qed.
 
 Lemma counter_in_answer
       (g : goal)
