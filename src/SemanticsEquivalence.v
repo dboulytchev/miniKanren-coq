@@ -83,7 +83,9 @@ Proof.
   { good_inversion Hst'. good_inversion Hst'0. auto. }
   { good_inversion wfState. good_inversion Hst'.
     constructor; auto. econstructor; eauto.
-    intros HIn. apply freshCorrect in HIn. omega. }
+    intros HIn. apply freshCorrect in HIn.
+    { omega. }
+    { reflexivity. } }
   { good_inversion Hst'. auto. }
   { auto. }
   { good_inversion wfState. good_inversion Hst'; auto. }
@@ -452,35 +454,178 @@ Proof.
     { apply IHHgoal. intros. rewrite Heqfn'.
       destruct (name_eq_dec x a).
       { unfold gt_eq. subst. auto. }
-      { specialize (Hease _ n). rewrite Hease. eauto. } }
-    { rewrite Heqfn'. intros. destruct (name_eq_dec x a); auto.
-      contradiction. } }
+      { specialize (Hease _ n). red. rewrite Hease.
+        apply ff'_eq. eauto. } }
+    { rewrite Heqfn'. intros.
+      destruct (name_eq_dec x a); try contradiction.
+      reflexivity. } }
   { constructor. apply IHHgoal. intros.
     apply ff'_eq. constructor.
-    remember (MiniKanrenSyntax.P r). destruct d as [rel clrH].
-    simpl in H. red in clrH. red in clrH. auto. }
+    remember (MiniKanrenSyntax.P r). destruct d as [rel [Hcl Hco]].
+    simpl in H. red in Hcl. red in Hcl. auto. }
 Qed.
 
 
+Lemma den_sem_rename_var
+      (g1 g2 : goal)
+      (cg_g : consistent_goal g1)
+      (n : nat)
+      (g1Bound : forall x : name, is_fv_of_goal x g1 -> x < n)
+      (g2Bound : forall x : name, is_fv_of_goal x g2 -> x < n)
+      (a1 a2 : name)
+      (a12_neq : a1 <> a2)
+      (a2_fresh : ~ is_fv_of_goal a2 g1)
+      (sar : semiadequate_renaming a1 a2 g1 g2)
+      (fa1 fa2 : gt_fun)
+      (l : nat)
+      (Hgoal_f1 : in_denotational_sem_lev_goal l g1 fa1)
+      (f_switch : gt_eq (fa1 a1) (fa2 a2))
+      (f12_eq : forall x, x <> a1 -> x <> a2 -> gt_eq (fa1 x) (fa2 x)) :
+      in_denotational_sem_lev_goal l g2 fa2.
+Proof.
+  revert cg_g g1Bound g2Bound a12_neq a2_fresh sar Hgoal_f1 f_switch f12_eq.
+  revert g1 g2 n a1 a2 fa1 fa2.
+  induction l.
+  { intros. apply in_denotational_sem_zero_lev in Hgoal_f1. contradiction. }
+  { induction g1; intros; good_inversion Hgoal_f1; good_inversion sar; good_inversion cg_g.
+    { constructor.
+      etransitivity.
+      2: etransitivity.
+      2: apply UnH.
+      1-2: etransitivity.
+      1, 3: symmetry.
+      1, 4: apply gt_fun_apply_compose.
+      all: apply apply_gt_fun_fv; intros; unfold subst_gt_fun_compose;
+        simpl; destruct (Nat.eq_dec a1 x); subst; symmetry; auto;
+        apply f12_eq; auto; intro; subst; auto. }
+    { apply dslgDisjL; eauto. eapply IHg1_1; eauto. }
+    { apply dslgDisjR; eauto. eapply IHg1_2; eauto. }
+    { constructor; eauto.
+      { eapply IHg1_1; eauto. }
+      { eapply IHg1_2; eauto. } }
+    { apply den_sem_fv_only with fa1.
+      { intros; apply f12_eq; intro; subst; auto. }
+      { econstructor.
+        2: eauto.
+        all: eauto. } }
+    { rename g into fg. rename fn into fn1. rename a into a0. red in HBinding.
+      assert (very_fresh_var : exists y, a0 <> y /\ a2 <> y /\
+                                         (~ is_fv_of_goal y (Fresh fg)) /\
+                                         (~ is_fv_of_goal y (Fresh rfg))).
+      { destruct (name_eq_dec a0 n); destruct (name_eq_dec a0 (S n));
+        destruct (name_eq_dec a2 n); destruct (name_eq_dec a2 (S n)); subst; try omega.
+        5, 6, 8, 9: exists n.
+        1, 3, 9: exists (S n).
+        4, 5: exists (S (S n)).
+        all: repeat split; try omega.
+        all: intro CH; try apply g1Bound in CH; try apply g2Bound in CH; omega. }
+      destruct very_fresh_var as [a3 [a03_neq [a23_neq [a3_fresh a3_rfresh]]]].
+      assert (a13_neq : a1 <> a3).
+      { intro; subst; auto. }
+      remember (fun x => if name_eq_dec x a3
+                           then fn1 a0
+                           else if name_eq_dec x a0
+                                  then fa2 a0
+                                  else fn1 x) as fn0 eqn:fn0_def.
+      assert (AH0 : in_denotational_sem_lev_goal (S l) (fg a3) fn0).
+      { subst.
+        apply H with a0 (max n (max (S a0) (S a3))) a0 a3 fn1; eauto.
+        { intros. destruct (name_eq_dec x a0); subst.
+          { zify. omega. }
+          { assert (x < n); eauto. zify. omega. } }
+        { intros. destruct (name_eq_dec x a3); subst.
+          { zify. omega. }
+          { assert (x < n); eauto. zify. omega. } }
+        { destruct (name_eq_dec a3 a3); subst.
+          { reflexivity. }
+          { contradiction. } }
+        { intros. destruct (name_eq_dec x a3).
+          { contradiction. }
+          { destruct (name_eq_dec x a0).
+            { contradiction. }
+            { reflexivity. } } } }
+      remember (fun x => if name_eq_dec x a2
+                           then fn0 a1
+                           else if name_eq_dec x a1
+                                  then fa2 a1
+                                  else fn0 x) as fn2 eqn:fn2_def.
+      assert (AH2 : in_denotational_sem_lev_goal (S l) (rfg a3) fn2).
+      { apply H with a3 (max n (max (S a0) (S a3))) a1 a2 fn0; subst; eauto.
+        { intros. destruct (name_eq_dec x a3); subst.
+          { zify. omega. }
+          { assert (x < n); eauto. zify. omega. } }
+        { intros. destruct (name_eq_dec x a3); subst.
+          { zify. omega. }
+          { assert (x < n); eauto. zify. omega. } }
+        { simpl. destruct (name_eq_dec a2 a2); subst.
+          { reflexivity. }
+          { contradiction. } }
+        { intros. simpl. destruct (name_eq_dec x a2).
+          { contradiction. }
+          { destruct (name_eq_dec x a1).
+            { contradiction. }
+            { reflexivity. } } } }
+      econstructor; eauto.
+      intros. subst. destruct (name_eq_dec x a2); subst.
+      { destruct (name_eq_dec a1 a0); subst.
+        { contradiction. }
+        { destruct (name_eq_dec a1 a3); subst.
+          { contradiction. }
+          { etransitivity.
+            { apply Hease. auto. }
+            { auto. } } } }
+      { destruct (name_eq_dec x a1); subst.
+        { reflexivity. }
+        { destruct (name_eq_dec x a3).
+          { contradiction. }
+          { destruct (name_eq_dec x a0); subst.
+            { reflexivity. }
+            { etransitivity.
+              { apply Hease. auto. }
+              { apply f12_eq; auto. } } } } } }
+    { rename n into r. rename n0 into n.
+      remember (MiniKanrenSyntax.P r) as d. destruct d as [rel [Hcl Hco]].
+      red in Hco. destruct (Hco t) as [Hcog Hcof].
+      red in Hcl. unfold closed_goal_in_context in Hcl.
+      econstructor.
+      rewrite <- Heqd. simpl.
+      eapply IHl.
+      7: eauto.
+      all: simpl; eauto. } }
+Qed.
+
 Lemma den_sem_another_fresh_var
       (b : name -> goal)
-      (s : subst)
+      (cg : consistent_goal (Fresh b))
       (n : nat)
-      (wfSt' : well_formed_state' (Leaf (Fresh b) s n))
+      (freshBound : forall x : name, is_fv_of_goal x (Fresh b) -> x < n)
       (a1 a2 : name)
       (a1_fresh : ~ is_fv_of_goal a1 (Fresh b))
       (a2_fresh : ~ is_fv_of_goal a2 (Fresh b))
       (fa1 fa2 : gt_fun)
       (l : nat)
       (Hgoal_f1 : in_denotational_sem_lev_goal l (b a1) fa1)
-      (f_switch : fa2 a2 = fa1 a1)
-      (f12_eq : forall x, x <> a1 -> x <> a2 -> fa1 x = fa2 x) :
+      (f_switch : gt_eq (fa1 a1) (fa2 a2))
+      (f12_eq : forall x, x <> a1 -> x <> a2 -> gt_eq (fa1 x) (fa2 x)) :
       in_denotational_sem_lev_goal l (b a2) fa2.
-Proof. admit. Admitted.
+Proof.
+  destruct (name_eq_dec a1 a2); subst.
+  { apply den_sem_fv_only with fa1; auto.
+    intros. destruct (name_eq_dec x a2); subst; auto. }
+  { good_inversion cg. red in HBinding.
+    eapply den_sem_rename_var with (g1 := (b a1)) (n := max n (max (S a1) (S a2))); eauto.
+    { intros. destruct (name_eq_dec x a1); subst.
+      { zify. omega. }
+      { assert (x < n); eauto. zify. omega. } }
+    { intros. destruct (name_eq_dec x a2); subst.
+      { zify. omega. }
+      { assert (x < n); eauto. zify. omega. } } }
+Qed.
 
 Lemma search_completeness_generalized
       (l     : nat)
       (g     : goal)
+      (Hcg    : consistent_goal g)
       (s     : subst)
       (n     : nat)
       (wfSt' : well_formed_state' (Leaf g s n))
@@ -492,9 +637,9 @@ Lemma search_completeness_generalized
       exists (f' : gt_fun), (in_denotational_analog t f') /\
                             forall (x : name), x < n -> gt_eq (f x) (f' x).
 Proof.
-  revert HOP. revert t. revert Hgoal Hsubst wfSt'. revert g f s n. induction l.
+  revert HOP. revert t. revert Hcg Hgoal Hsubst wfSt'. revert g f s n. induction l.
   { intros. apply in_denotational_sem_zero_lev in Hgoal. contradiction. }
-  { induction g; intros.
+  { induction g; intros; good_inversion Hcg.
     { good_inversion Hgoal. }
     { exists f. split.
       2: intros; red; auto.
@@ -525,12 +670,12 @@ Proof.
       specialize (op_sem_exists (State (Leaf g2 s n))). intro p2. destruct p2 as [t2 OP2].
       specialize (sum_op_sem _ _ _ _ _ OP1 OP2 OP). intro Hinter.
       good_inversion Hgoal.
-      { specialize (IHg1 f s n Hg Hsubst wfst'1 t1 OP1).
+      { specialize (IHg1 f s n Hcg1 Hg Hsubst wfst'1 t1 OP1).
         destruct IHg1 as [f' [HinDA ff'_eq]]. exists f'. split; auto.
         red in HinDA. destruct HinDA as [sr [nr [Hin Hsubstr]]].
         red. exists sr. exists nr. split; auto. constructor.
         apply (interleave_in _ _ _ Hinter (Answer sr nr)). auto. }
-      { specialize (IHg2 f s n Hg Hsubst wfst'2 t2 OP2).
+      { specialize (IHg2 f s n Hcg2 Hg Hsubst wfst'2 t2 OP2).
         destruct IHg2 as [f' [HinDA ff'_eq]]. exists f'. split; auto.
         red in HinDA. destruct HinDA as [sr [nr [Hin Hsubstr]]].
         red. exists sr. exists nr. split; auto. constructor.
@@ -539,7 +684,7 @@ Proof.
       specialize (op_sem_exists (State (Leaf g1 s n))). intro p1. destruct p1 as [t1 OP1].
       assert (wfst'1 : well_formed_state' (Leaf g1 s n)).
       { constructor. good_inversion wfSt'. auto. }
-      specialize (IHg1 f s n Hg1 Hsubst wfst'1 t1 OP1).
+      specialize (IHg1 f s n Hcg1 Hg1 Hsubst wfst'1 t1 OP1).
       destruct IHg1 as [f' [HinDA ff'_eq]]. red in HinDA.
       destruct HinDA as [s' [n' [Hinstr' HDAS']]].
       specialize (op_sem_exists (State (Leaf g2 s' n'))). intro p2. destruct p2 as [t2 OP2].
@@ -550,7 +695,7 @@ Proof.
       assert (Hg2' : in_denotational_sem_lev_goal (S l) g2 f').
       { apply den_sem_fv_only with f; auto. intros. apply ff'_eq.
         good_inversion wfSt'. auto. }
-      specialize (IHg2 f' s' n' Hg2' HDAS' wfst'2 t2 OP2).
+      specialize (IHg2 f' s' n' Hcg2 Hg2' HDAS' wfst'2 t2 OP2).
       destruct IHg2 as [f'' [HinDA f'f''_eq]]. red in HinDA.
       destruct HinDA as [s'' [n'' [Hinstr'' HDAS'']]].
       exists f''. split.
@@ -578,11 +723,12 @@ Proof.
           omega. }
         { simpl in H0. destruct H0; try contradiction. auto. } }
       assert (Hgn : in_denotational_sem_lev_goal (S l) (g n) fn).
-      { rewrite Heqfn. apply den_sem_another_fresh_var with s n a fa; auto.
-        { good_inversion wfSt'. intro C. apply freshCorrect in C. omega. }
-        { destruct (name_eq_dec n n); try contradiction. auto. }
+      { rewrite Heqfn. good_inversion wfSt'.
+        apply den_sem_another_fresh_var with n a fa; auto.
+        { intro C. apply freshCorrect in C. omega. }
+        { destruct (name_eq_dec n n); try contradiction. reflexivity. }
         { intros. destruct (name_eq_dec x n); try contradiction.
-          destruct (name_eq_dec x a); try contradiction. auto. } }
+          destruct (name_eq_dec x a); try contradiction. reflexivity. } }
       assert (Hsubstn: in_denotational_sem_subst s fn).
       { red. exists fs'. red. intros. red. unfold subst_gt_fun_compose.
         rewrite Heqfs'. rewrite Heqfn. destruct (name_eq_dec x n).
@@ -597,9 +743,9 @@ Proof.
             red in fssf'_eq. specialize (fssf'_eq x). red in fssf'_eq.
             rewrite <- fssf'_eq. unfold subst_gt_fun_compose.
             apply apply_gt_fun_fv. intros. destruct (name_eq_dec x0 n).
-            { rewrite e in H0. apply H_n_is_fresh in H0. contradiction. } 
-            { unfold gt_eq. auto. } } } }
-      specialize (H n fn s (S n) Hgn Hsubstn wfState t0 OP).
+            { rewrite e in H0. apply H_n_is_fresh in H0. contradiction. }
+            { reflexivity. } } } }
+      specialize (H n fn s (S n) (HcgInner n) Hgn Hsubstn wfState t0 OP).
       destruct H as [f' [HinDA ff'_eq]]. exists f'. split.
       { red. red in HinDA. destruct HinDA as [s' [n' [Hinstr HDAS]]].
         exists s'. exists n'. split; auto. constructor; auto. }
@@ -617,7 +763,10 @@ Proof.
         { specialize (Hease x n1). rewrite Hease. auto. } } }
     { good_inversion Hgoal. good_inversion HOP. inversion EV; subst.
       apply well_formedness_preservation in EV; auto. good_inversion EV.
-      specialize (IHl (proj1_sig (MiniKanrenSyntax.P n) t) f s n0 Hbody Hsubst wfState t1 OP).
+      assert (cg_body : consistent_goal (proj1_sig (MiniKanrenSyntax.P n) t)).
+      { remember (MiniKanrenSyntax.P n) as d. destruct d as [rel [Hcl Hco]].
+        red in Hco. destruct (Hco t) as [Hcog Hcof]. auto. }
+      specialize (IHl (proj1_sig (MiniKanrenSyntax.P n) t) f s n0 cg_body Hbody Hsubst wfState t1 OP).
       destruct IHl as [f' [HinDA ff'_eq]]. exists f'. split; auto.
       red. red in HinDA. destruct HinDA as [s' [n' [Hinstr HDAS]]].
       exists s'. exists n'. split; auto. constructor; auto. } }
@@ -625,6 +774,7 @@ Qed.
 
 Lemma search_completeness
       (g   : goal)
+      (Hcg    : consistent_goal g)
       (k   : nat)
       (HC  : closed_goal_in_context (first_nats k) g)
       (f   : gt_fun)
@@ -640,7 +790,7 @@ Proof.
   assert (Hsubst : in_denotational_sem_subst empty_subst f).
   { red. exists f. red. intros.
     unfold subst_gt_fun_compose. rewrite apply_empty. reflexivity. }
-  specialize (search_completeness_generalized l g empty_subst k wfSt' t HOP f HDS Hsubst).
+  specialize (search_completeness_generalized l g Hcg empty_subst k wfSt' t HOP f HDS Hsubst).
   intro. destruct H as [f' [HinDA ff'eq]]. exists f'. split; auto.
   intros. apply ff'eq. apply first_nats_less; auto.
 Qed.

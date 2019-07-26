@@ -154,8 +154,8 @@ Proof.
     { omega. }
     { apply Nat.lt_lt_succ_r. apply freshCorrect. econstructor; eauto. } }
   { good_inversion wf_st'. constructor. constructor.
-    specialize (proj2_sig (MiniKanrenSyntax.P r)). intro Hcl.
-    red in Hcl. red in Hcl. auto. }
+    specialize (proj2_sig (MiniKanrenSyntax.P r)). intro Hcc.
+    simpl in Hcc. destruct Hcc as [Hcl _]. red in Hcl. red in Hcl. auto. }
   { good_inversion wf_st'. auto. }
   { good_inversion wf_st'. specialize (IHEV wfst'1).
     good_inversion IHEV. auto. }

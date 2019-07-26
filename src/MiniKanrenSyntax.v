@@ -17,39 +17,6 @@ Inductive goal : Set :=
 (* rel is a body of a relational symbol *)
 Definition rel : Set := term -> goal.
 
-Fixpoint rename_var_in_goal (old_x : name) (new_x : name) (g : goal) : goal :=
-  match g with
-  | Fail         => Fail
-  | Unify t1 t2  => Unify (apply_subst [(old_x, Var new_x)] t1)
-                          (apply_subst [(old_x, Var new_x)] t2)
-  | Disj g1 g2   => Disj (rename_var_in_goal old_x new_x g1)
-                         (rename_var_in_goal old_x new_x g2)
-  | Conj g1 g2   => Conj (rename_var_in_goal old_x new_x g1)
-                         (rename_var_in_goal old_x new_x g2)
-  | Fresh fg     => Fresh (fun n => rename_var_in_goal old_x new_x (fg n))
-  | Invoke r arg => Invoke r (apply_subst [(old_x, Var new_x)] arg)
-  end.
-
-Definition consistent_binding (b : name -> goal) : Prop :=
-  forall x y, b y = rename_var_in_goal x y (b x).
-
-Inductive consistent_goal : goal -> Prop :=
-| cgFail   : consistent_goal Fail
-| cgUnify  : forall t1 t2, consistent_goal (Unify t1 t2)
-| cgDisj   : forall g1 g2 (Hcg1 : consistent_goal g1)
-                          (Hcg2 : consistent_goal g2),
-                          consistent_goal (Disj g1 g2)
-| cgConj   : forall g1 g2 (Hcg1 : consistent_goal g1)
-                          (Hcg2 : consistent_goal g2),
-                          consistent_goal (Conj g1 g2)
-| cgFresh  : forall fg (HBinding : consistent_binding fg)
-                       (HcgInner : forall n, consistent_goal (fg n)),
-                       consistent_goal (Fresh fg)
-| cgInvoke : forall r arg, consistent_goal (Invoke r arg).
-
-Definition consistent_rel (r : rel) : Prop :=
-  forall (arg : term), consistent_goal (r arg).
-
 Inductive is_fv_of_goal (n : name) : goal -> Prop :=
 | fvUnifyL : forall t1 t2 (HInFv : In n (fv_term t1)),
                           is_fv_of_goal n (Unify t1 t2)
@@ -129,8 +96,54 @@ Module SmokeTest.
 
 End SmokeTest.
 
+Inductive semiadequate_renaming (old_x : name) (new_x : name) : goal -> goal -> Prop :=
+| sarFail : semiadequate_renaming old_x new_x Fail Fail
+| sarUnify : forall t1 t2, semiadequate_renaming old_x new_x (Unify t1 t2)
+                                                 (Unify (apply_subst [(old_x, Var new_x)] t1)
+                                                        (apply_subst [(old_x, Var new_x)] t2))
+| sarDisj : forall g1 g2 rg1 rg2 (sar1 : semiadequate_renaming old_x new_x g1 rg1)
+                                 (sar2 : semiadequate_renaming old_x new_x g2 rg2),
+                                 semiadequate_renaming old_x new_x (Disj g1 g2) (Disj rg1 rg2)
+| sarConj : forall g1 g2 rg1 rg2 (sar1 : semiadequate_renaming old_x new_x g1 rg1)
+                                 (sar2 : semiadequate_renaming old_x new_x g2 rg2),
+                                 semiadequate_renaming old_x new_x (Conj g1 g2) (Conj rg1 rg2)
+| sarFreshNFV : forall fg (old_x_NFV : ~ is_fv_of_goal old_x (Fresh fg)),
+                          semiadequate_renaming old_x new_x (Fresh fg) (Fresh fg)
+| sarFreshFV : forall fg rfg (old_x_FV : is_fv_of_goal old_x (Fresh fg))
+                             (sar_fg : forall y (y_NFV : ~ is_fv_of_goal y (Fresh fg)), semiadequate_renaming old_x new_x (fg y) (rfg y)),
+                             semiadequate_renaming old_x new_x (Fresh fg) (Fresh rfg)
+| sarInvoke : forall r arg, semiadequate_renaming old_x new_x (Invoke r arg)
+                                                  (Invoke r (apply_subst [(old_x, Var new_x)] arg)).
+
+Hint Constructors semiadequate_renaming.
+
+Definition consistent_binding (b : name -> goal) : Prop :=
+  forall x y, (~ is_fv_of_goal x (Fresh b)) -> semiadequate_renaming x y (b x) (b y).
+
+Inductive consistent_goal : goal -> Prop :=
+| cgFail   : consistent_goal Fail
+| cgUnify  : forall t1 t2, consistent_goal (Unify t1 t2)
+| cgDisj   : forall g1 g2 (Hcg1 : consistent_goal g1)
+                          (Hcg2 : consistent_goal g2),
+                          consistent_goal (Disj g1 g2)
+| cgConj   : forall g1 g2 (Hcg1 : consistent_goal g1)
+                          (Hcg2 : consistent_goal g2),
+                          consistent_goal (Conj g1 g2)
+| cgFresh  : forall fg (HBinding : consistent_binding fg)
+                       (HcgInner : forall n, consistent_goal (fg n)),
+                       consistent_goal (Fresh fg)
+| cgInvoke : forall r arg, consistent_goal (Invoke r arg).
+
+Hint Constructors consistent_goal.
+
+Definition consistent_function (f : term -> goal) : Prop :=
+  forall a1 a2 t, semiadequate_renaming a1 a2 (f t) (f (apply_subst [(a1, Var a2)] t)).
+
+Definition consistent_rel (r : rel) : Prop :=
+  forall (arg : term), consistent_goal (r arg) /\ consistent_function r.
+
 (* def is a definition of a closed relational symbol *)
-Definition def : Set := {r : rel | closed_rel r (* /\ consistent_rel r*)}.
+Definition def : Set := {r : rel | closed_rel r /\ consistent_rel r}.
 
 (* spec is a list of definitions *)
 Definition spec : Set := name -> def.
