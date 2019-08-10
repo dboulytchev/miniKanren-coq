@@ -1,10 +1,9 @@
 Require Import List.
+Require Import Coq.Lists.ListSet.
 Require Import Unify.
 Require Import MiniKanrenSyntax.
 Require Import Stream.
 Require Import Omega.
-
-Ltac good_inversion H := inversion H; clear H; subst.
 
 (* Partial state *) 
 Inductive state' : Set :=
@@ -40,15 +39,17 @@ Inductive is_counter_of_state' : nat -> state' -> Prop :=
 Hint Constructors is_counter_of_state'.
 
 Inductive well_formed_state' : state' -> Set :=
-| wfLeaf : forall g s frn   (freshCorrect : forall x, is_fv_of_goal x g -> x < frn),
+| wfLeaf : forall g s frn   (domLTCounter : forall x, in_subst_dom s x -> x < frn)
+                            (vranLTCounter : forall x, in_subst_vran s x -> x < frn)
+                            (FVLTCounter : forall x, is_fv_of_goal x g -> x < frn),
                             well_formed_state' (Leaf g s frn)
 | wfSum  : forall st'1 st'2 (wfst'1 : well_formed_state' st'1)
                             (wfst'2 : well_formed_state' st'2),
                             well_formed_state' (Sum st'1 st'2)
 | wfProd : forall st' g     (wfst': well_formed_state' st')
-                            (freshCorrect : forall x frn, is_counter_of_state' frn st' ->
-                                                          is_fv_of_goal x g ->
-                                                          x < frn),
+                            (FVLTCounter : forall x frn, is_counter_of_state' frn st' ->
+                                                         is_fv_of_goal x g ->
+                                                         x < frn),
                             well_formed_state' (Prod st' g).
 
 Hint Constructors well_formed_state'.
@@ -137,6 +138,49 @@ Proof.
       destruct iscH0 as [n' [Hle iscH]]. exists n'; auto. } }
 Qed.
 
+Lemma well_formed_subst_in_answer
+      (st' : state')
+      (s : subst)
+      (n : nat)
+      (st : state)
+      (EV : eval_step st' (Answer s n) st)
+      (wf_st' : well_formed_state' st') :
+      (forall x, in_subst_dom s x -> x < n) /\ (forall x, in_subst_vran s x -> x < n).
+Proof.
+  remember (Answer s n). induction EV; good_inversion Heql; good_inversion wf_st'; auto.
+  assert (FVt1 : forall x, In x (fv_term (apply_subst s0 t1)) -> x < n).
+  { clear u s'. intros. induction t1.
+    { simpl in H. destruct (image s0 n0) eqn:eq; auto.
+      apply vranLTCounter. red. eauto. }
+    { good_inversion H. }
+    { simpl in H. apply (set_union_elim name_eq_dec) in H. destruct H.
+      { apply IHt1_1; auto. intros. apply FVLTCounter.
+        good_inversion H0; auto. apply fvUnifyL. simpl.
+        apply set_union_intro. left. auto. }
+      { apply IHt1_2; auto. intros. apply FVLTCounter.
+        good_inversion H0; auto. apply fvUnifyL. simpl.
+        apply set_union_intro. right. auto. } } }
+  assert (FVt2 : forall x, In x (fv_term (apply_subst s0 t2)) -> x < n).
+  { clear u s'. intros. induction t2.
+    { simpl in H. destruct (image s0 n0) eqn:eq; auto.
+      apply vranLTCounter. red. eauto. }
+    { good_inversion H. }
+    { simpl in H. apply (set_union_elim name_eq_dec) in H. destruct H.
+      { apply IHt2_1; auto. intros. apply FVLTCounter.
+        good_inversion H0; auto. apply fvUnifyR. simpl.
+        apply set_union_intro. left. auto. }
+      { apply IHt2_2; auto. intros. apply FVLTCounter.
+        good_inversion H0; auto. apply fvUnifyR. simpl.
+        apply set_union_intro. right. auto. } } }
+  specialize (MGU_dom _ _ _ u). intro s'Dom.
+  specialize (MGU_vran _ _ _ u). intro s'VRan.
+  split.
+  { intros. apply compose_dom in H. destruct H; auto.
+    apply s'Dom in H. destruct H; auto. }
+  { intros. apply compose_vran in H. destruct H; auto.
+    apply s'VRan in H. destruct H; auto. }
+Qed.
+
 Lemma well_formedness_preservation
       (st' : state')
       (l : label)
@@ -145,37 +189,40 @@ Lemma well_formedness_preservation
       (wf_st' : well_formed_state' st') :
       well_formed_state st.
 Proof.
-  intros. induction EV; auto.
-  { good_inversion wf_st'. constructor. auto. }
-  { good_inversion wf_st'. constructor. constructor; auto.
+  intros. induction EV; good_inversion wf_st'; auto.
+  { constructor. auto. }
+  { constructor. constructor; auto.
     intros. good_inversion H. subst. auto. }
-  { good_inversion wf_st'. constructor. constructor. intros.
-    destruct (eq_nat_dec n x).
+  { constructor. constructor.
+    1-2: intros; eapply lt_trans; eauto.
+    intros. destruct (eq_nat_dec n x).
     { omega. }
-    { apply Nat.lt_lt_succ_r. apply freshCorrect. econstructor; eauto. } }
-  { good_inversion wf_st'. constructor. constructor.
+    { apply Nat.lt_lt_succ_r. apply FVLTCounter. econstructor; eauto. } }
+  { constructor. constructor; auto.
     specialize (proj2_sig (MiniKanrenSyntax.P r)). intro Hcc.
     simpl in Hcc. destruct Hcc as [Hcl _]. red in Hcl. red in Hcl. auto. }
-  { good_inversion wf_st'. auto. }
-  { good_inversion wf_st'. specialize (IHEV wfst'1).
+  { specialize (IHEV wfst'1).
     good_inversion IHEV. auto. }
-  { good_inversion wf_st'. constructor. constructor.
-    intros. apply freshCorrect; auto. eapply counter_in_answer; eauto. }
-  { good_inversion wf_st'. specialize (IHEV wfst').
-    good_inversion IHEV. constructor. constructor; auto. intros.
+  { constructor. constructor.
+    1-2: apply well_formed_subst_in_answer in EV; destruct EV; auto.
+    intros. apply FVLTCounter; auto. eapply counter_in_answer; eauto. }
+  { specialize (IHEV wfst'). good_inversion IHEV.
+    constructor. constructor; auto. intros.
     eapply counter_in_next_state in EV; eauto.
     destruct EV as [frn' [Hle Hisc]]. eapply lt_le_trans.
     2: eauto.
-    apply freshCorrect; auto. }
-  { good_inversion wf_st'. specialize (IHEV wfst').
-    good_inversion IHEV. constructor. constructor.
-    { constructor. intros. apply freshCorrect; auto.
+    auto. }
+  { specialize (IHEV wfst'). good_inversion IHEV.
+    constructor. constructor.
+    { constructor.
+      1-2: apply well_formed_subst_in_answer in EV; destruct EV; auto.
+      intros. apply FVLTCounter; auto.
       eapply counter_in_answer; eauto. }
     { constructor; auto. intros.
       eapply counter_in_next_state in EV; eauto.
       destruct EV as [frn' [Hle Hisc]]. eapply lt_le_trans.
       2: eauto.
-      apply freshCorrect; auto. } }
+      auto. } }
 Qed.
 
 Lemma eval_step_exists : forall (st' : state'), {l : label & {st : state & eval_step st' l st}}.
@@ -262,6 +309,48 @@ Proof.
     + subst. eapply CIH; eauto.
 Qed.
 
+Lemma counter_in_trace
+      (g : goal)
+      (s sr : subst)
+      (n nr : nat)
+      (tr : trace)
+      (OP : op_sem (State (Leaf g s n)) tr)
+      (HIn : in_stream (Answer sr nr) tr) :
+      n <= nr.
+Proof.
+  remember (Leaf g s n) as st'.
+  assert (forall n', is_counter_of_state' n' st' -> n <= n').
+  { intros. subst. good_inversion H. auto. }
+  clear Heqst'. revert H OP. revert n st'.
+  remember (Answer sr nr). induction HIn; intros; subst.
+  { good_inversion OP. apply counter_in_answer in EV. auto. }
+  { good_inversion OP. destruct st.
+    { good_inversion OP0. good_inversion HIn. }
+    { apply IHHIn with s0; auto. intros.
+      specialize (counter_in_next_state _ _ _ _ EV H0). intros.
+      destruct H1. destruct H1. apply H in H2.
+      eapply le_trans; eauto. } }
+Qed.
+
+Lemma well_formed_subst_in_trace
+      (st : state)
+      (wf_st' : well_formed_state st)
+      (t : trace)
+      (OP : op_sem st t)
+      (s : subst)
+      (n : nat)
+      (isAns: in_stream (Answer s n) t) :
+      (forall x, in_subst_dom s x -> x < n) /\ (forall x, in_subst_vran s x -> x < n).
+Proof.
+  remember (Answer s n). revert wf_st' OP. revert st.
+  induction isAns; intros.
+  { good_inversion OP. good_inversion wf_st'.
+    eapply well_formed_subst_in_answer; eauto. }
+  { good_inversion OP. good_inversion wf_st'.
+    apply IHisAns with st0; auto.
+    eapply well_formedness_preservation; eauto. }
+Qed.
+
 Lemma sum_op_sem : forall st'1 st'2 t1 t2 t, op_sem (State st'1) t1 ->
                                              op_sem (State st'2) t2 ->
                                              op_sem (State (Sum st'1 st'2)) t ->
@@ -297,4 +386,48 @@ Proof.
   specialize (interleave_finite _ _ _ H). intro.
   specialize (interleave_finite _ _ _ H1). intro.
   apply H3. apply and_comm. apply H2. auto.
+Qed.
+
+Lemma prod_op_sem_in
+      (st' : state')
+      (g : goal)
+      (s : subst)
+      (n : nat)
+      (t1 t2 t : trace)
+      (r : label)
+      (OP : op_sem (State (Prod st' g)) t)
+      (OP1 : op_sem (State st') t1)
+      (OP2 : op_sem (State (Leaf g s n)) t2)
+      (HIn1 : in_stream (Answer s n) t1)
+      (HIn2 : in_stream r t2) :
+      in_stream r t.
+Proof.
+  revert OP OP1. revert t st'. remember (Answer s n) as r1.
+  induction HIn1; intros; subst.
+  { good_inversion OP1. good_inversion OP.
+    good_inversion EV0; specialize (eval_step_unique _ _ _ _ _ EV H3);
+    intro eqs; destruct eqs; subst; good_inversion H.
+    { constructor. specialize (op_sem_unique _ _ _ OP2 OP1).
+      intros. eapply in_equal_streams; eauto. }
+    { constructor. specialize (op_sem_exists (State (Leaf g s0 n0))).
+      intro H. destruct H as [t3 OP3].
+      specialize (op_sem_exists (State (Prod st'0 g))).
+      intro H. destruct H as [t4 OP4].
+      specialize (sum_op_sem _ _ _ _ _ OP3 OP4 OP1).
+      intro interH. eapply interleave_in in interH.
+      eapply interH. left. specialize (op_sem_unique _ _ _ OP2 OP3).
+      intros. eapply in_equal_streams; eauto. } }
+  { specialize (IHHIn1 eq_refl).
+    good_inversion OP1. good_inversion OP.
+    good_inversion EV0; specialize (eval_step_unique _ _ _ _ _ EV H3);
+    intro eqs; destruct eqs; subst.
+    1-2: good_inversion OP0; good_inversion HIn1.
+    { constructor. eapply IHHIn1; eauto. }
+    { constructor. specialize (op_sem_exists (State (Leaf g s0 n0))).
+      intro H. destruct H as [t3 OP3].
+      specialize (op_sem_exists (State (Prod st'0 g))).
+      intro H. destruct H as [t4 OP4].
+      specialize (sum_op_sem _ _ _ _ _ OP3 OP4 OP1).
+      intro interH. eapply interleave_in in interH.
+      eapply interH. right. eapply IHHIn1; eauto. } }
 Qed.

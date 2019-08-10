@@ -7,6 +7,8 @@ Require Export Coq.Structures.OrderedTypeEx.
 Require Import Eqdep.
 Require Import Program.
 
+Ltac good_inversion H := inversion H; clear H; subst.
+
 (************************* Terms *************************)
 (* Name of entities *)
 Definition name := nat.
@@ -127,7 +129,7 @@ Definition empty_subst : subst := [].
 Definition singleton_subst (n : name) (t : term) := [(n, t)].
 
 (* Substitution domain *)
-Definition domain (s : subst) : list name := nodup name_eq_dec (map (@fst name term) s).
+(* Definition domain (s : subst) : list name := nodup name_eq_dec (map (@fst name term) s). *)
 
 (* Substitution image *)
 Fixpoint image (s : subst) (n : name) : option term :=
@@ -135,6 +137,24 @@ Fixpoint image (s : subst) (n : name) : option term :=
   | [] => None
   | (m, t) :: tl => if eq_nat_dec m n then Some t else image tl n
   end.
+
+Lemma map_image
+      (f : name -> term)
+      (v : var_set)
+      (x : name)
+      (HIn : In x v) :
+      image (map (fun x0 : name => (x0, f x0)) v) x = Some (f x).
+Proof.
+  induction v.
+  { contradiction. }
+  { simpl. destruct (Nat.eq_dec a x).
+    { subst. auto. }
+    { apply IHv. destruct HIn; auto. contradiction. } }
+Qed.
+
+Definition in_subst_dom (s : subst) (x : name) : Prop := exists t, image s x = Some t.
+
+Definition in_subst_vran (s : subst) (y : name) : Prop := exists x t, image s x = Some t /\ In y (fv_term t).
 
 (* Substitution application *)
 Fixpoint apply_subst (s : subst) (t : term) : term :=
@@ -149,22 +169,25 @@ Proof.
   induction t; try (simpl; congruence); auto.
 Qed.
 
-(* Free variables in the result of a singleton substitution application *)
-Lemma apply_fv: forall t s n m,  In m (fv_term (apply_subst [(n, s)] t)) -> In m (fv_term s) \/ In m (fv_term t).
+Lemma apply_subst_FV
+      (x : name)
+      (t : term)
+      (s : subst)
+      (xFV : In x (fv_term (apply_subst s t))) :
+      In x (fv_term t) \/ in_subst_vran s x.
 Proof.
   induction t.
-  * intros. unfold apply_subst in H. unfold image in H. destruct (Nat.eq_dec n0 n).
-    + left. assumption.
-    + right. assumption.
-  * intros. inversion H.
-  * intros. unfold apply_subst in H. fold apply_subst in H.
-    unfold fv_term in H. fold fv_term in H. apply (set_union_elim name_eq_dec) in H. destruct H.
-    + apply IHt1 in H. destruct H.
-      - left. assumption.
-      - right. unfold fv_term. fold fv_term. apply (set_union_intro name_eq_dec). left. assumption.
-    + apply IHt2 in H. destruct H.
-      - left. assumption.
-      - right. unfold fv_term. fold fv_term. apply (set_union_intro name_eq_dec). right. assumption.
+  { simpl in xFV. destruct (image s n) eqn:eq.
+    { right. red. eauto. }
+    { left. auto. } }
+  { inversion xFV. }
+  { simpl in xFV. apply (set_union_elim name_eq_dec) in xFV. destruct xFV.
+    { apply IHt1 in H. destruct H.
+      { left. apply (set_union_intro name_eq_dec). left. auto. }
+      { right. auto. } }
+    { apply IHt2 in H. destruct H.
+      { left. apply (set_union_intro name_eq_dec). right. auto. }
+      { right. auto. } } }
 Qed.
 
 (* Composition *)
@@ -188,6 +211,40 @@ Proof.
         { auto. }
   * reflexivity.
   * simpl. congruence.
+Qed.
+
+Lemma compose_dom
+      (x : name)
+      (s s' : subst)
+      (inDom : in_subst_dom (compose s s') x) :
+      in_subst_dom s x \/ in_subst_dom s' x.
+Proof.
+  induction s.
+  { right. auto. }
+  { red in inDom. destruct inDom. unfold in_subst_dom.
+    simpl. destruct a. simpl in H.
+    destruct (Nat.eq_dec n x).
+    { left. eauto. }
+    { apply IHs. red. eauto. } }
+Qed.
+
+Lemma compose_vran
+      (y : name)
+      (s s' : subst)
+      (inVRan : in_subst_vran (compose s s') y) :
+      in_subst_vran s y \/ in_subst_vran s' y.
+Proof.
+  destruct inVRan as [x [t [inImage inFV]]].
+  assert (GenLemma : (exists t0, image s x = Some t0 /\ In y (fv_term t0)) \/ in_subst_vran s' y).
+  { induction s.
+    { right. red. eauto. }
+    { destruct a. simpl in inImage. simpl. destruct (Nat.eq_dec n x).
+      { inversion inImage. subst. apply apply_subst_FV in inFV.
+        destruct inFV; auto. left. exists t0. split; auto. }
+      { apply IHs in inImage. destruct inImage; auto. } } }
+  destruct GenLemma.
+  { left. red. eauto. }
+  { right. auto. }
 Qed.
 
 (* Generality *)
@@ -379,16 +436,18 @@ Proof.
   * apply set_union_nodup; apply fv_term_nodup.
   * apply set_union_nodup; apply fv_term_nodup.
   * intros n0 InH. apply (set_union_elim name_eq_dec) in InH. inversion_clear InH.
-    + apply apply_fv in H. inversion_clear H.
-      - apply unification_step_fv with (m:=n0) in USok.
-        { apply (set_union_intro name_eq_dec). assumption. }
-        assumption.
+    + apply apply_subst_FV in H. inversion_clear H.
       - apply (set_union_intro name_eq_dec). left. assumption.
-    + apply apply_fv in H. inversion_clear H.
       - apply unification_step_fv with (m:=n0) in USok.
         { apply (set_union_intro name_eq_dec). assumption. }
-        assumption.
+        red in H0. destruct H0 as [x [t [xImage inFV]]]. simpl in xImage.
+        destruct (Nat.eq_dec n x); good_inversion xImage. auto.
+    + apply apply_subst_FV in H. inversion_clear H.
       - apply (set_union_intro name_eq_dec). right. assumption.
+      - apply unification_step_fv with (m:=n0) in USok.
+        { apply (set_union_intro name_eq_dec). assumption. }
+        red in H0. destruct H0 as [x [t [xImage inFV]]]. simpl in xImage.
+        destruct (Nat.eq_dec n x); good_inversion xImage. auto.
   * exists n. split.
     + apply unification_step_subst_occurs in USok. apply (set_union_intro name_eq_dec). assumption.
     + unfold not. intro H. apply (set_union_elim name_eq_dec) in H. inversion_clear H as [H0 | H0];
@@ -657,4 +716,60 @@ Proof.
     specialize (IHunify eq_refl s).
     specialize (unification_step_binds_2 t1 t2 n st s e C). intros eq.
     apply IHunify. red. rewrite <- eq. rewrite <- eq. assumption.
+Qed.
+
+Lemma MGU_dom
+      (t1 t2 : term)
+      (s : subst)
+      (MGU : unify t1 t2 (Some s))
+      (x : name)
+      (inDom : in_subst_dom s x) :
+      In x (fv_term t1) \/ In x (fv_term t2).
+Proof. 
+  remember (Some s) as r eqn:eq. revert eq inDom. revert s.
+  induction MGU; intros; good_inversion eq.
+  { destruct inDom. inversion H. }
+  { apply compose_dom in inDom. destruct inDom.
+    { red in H. destruct H. simpl in H.
+      destruct (Nat.eq_dec n x); good_inversion H.
+      eapply unification_step_subst_occurs; eauto. }
+     { specialize (IHMGU _ eq_refl H). destruct IHMGU.
+       { apply apply_subst_FV in H0. destruct H0.
+         { left. auto. }
+         { red in H0. destruct H0 as [x0 [t [x0Image inFV]]]. simpl in x0Image.
+           destruct (Nat.eq_dec n x0); good_inversion x0Image.
+           eapply unification_step_fv; eauto. } }
+        { apply apply_subst_FV in H0. destruct H0.
+         { right. auto. }
+         { red in H0. destruct H0 as [x0 [t [x0Image inFV]]]. simpl in x0Image.
+           destruct (Nat.eq_dec n x0); good_inversion x0Image.
+           eapply unification_step_fv; eauto. } } } }
+Qed.
+
+Lemma MGU_vran
+      (t1 t2 : term)
+      (s : subst)
+      (MGU : unify t1 t2 (Some s))
+      (x : name)
+      (inVRan : in_subst_vran s x) :
+      In x (fv_term t1) \/ In x (fv_term t2).
+Proof.
+  remember (Some s) as r eqn:eq. revert eq inVRan. revert s.
+  induction MGU; intros; good_inversion eq.
+  { destruct inVRan. destruct H as [t [x0Image inFV]]. inversion x0Image. }
+  { apply compose_vran in inVRan. destruct inVRan.
+    { red in H. destruct H as [x0 [t [x0Image inFV]]]. simpl in x0Image.
+      destruct (Nat.eq_dec n x0); good_inversion x0Image.
+      eapply unification_step_fv; eauto. }
+     { specialize (IHMGU _ eq_refl H). destruct IHMGU.
+       { apply apply_subst_FV in H0. destruct H0.
+         { left. auto. }
+         { red in H0. destruct H0 as [x0 [t [x0Image inFV]]]. simpl in x0Image.
+           destruct (Nat.eq_dec n x0); good_inversion x0Image.
+           eapply unification_step_fv; eauto. } }
+        { apply apply_subst_FV in H0. destruct H0.
+         { right. auto. }
+         { red in H0. destruct H0 as [x0 [t [x0Image inFV]]]. simpl in x0Image.
+           destruct (Nat.eq_dec n x0); good_inversion x0Image.
+           eapply unification_step_fv; eauto. } } } }
 Qed.
