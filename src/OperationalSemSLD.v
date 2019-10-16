@@ -1,4 +1,3 @@
-Add LoadPath "~/JB/minikanren-coq/src/".
 
 Require Import List.
 Require Import Coq.Lists.ListSet.
@@ -363,7 +362,7 @@ Qed.
 
 Extraction Language Haskell.
 
-Extraction "Users/rozplokhas/JB/minikanren-coq/extracted/sld_interpreter.hs" op_sem_SLD_exists.
+Extraction "extracted/sld_interpreter.hs" op_sem_SLD_exists.
 
 Lemma op_sem_unique
       (st : state)

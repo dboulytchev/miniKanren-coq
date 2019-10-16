@@ -1,4 +1,3 @@
-Add LoadPath "~/JB/minikanren-coq/src/".
 
 Require Import List.
 Require Import Coq.Lists.ListSet.
