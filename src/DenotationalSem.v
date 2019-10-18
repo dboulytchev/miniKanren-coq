@@ -174,23 +174,26 @@ Proof.
   rewrite gt_fun_apply_compose. rewrite gt_fun_apply_compose. auto.
 Qed.
 
+Reserved Notation "[| g , f |]" (at level 0).
+         
 Inductive in_denotational_sem_goal : goal -> gt_fun -> Prop :=
-| dsgCut    : forall f, in_denotational_sem_goal Cut f
+| dsgCut    : forall f,  [| Cut , f |]
 | dsgUnify  : forall f t1 t2 (UNI : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)),
-                             in_denotational_sem_goal (Unify t1 t2) f
+                             [| Unify t1 t2 , f |]
 | dsgDisjL  : forall f g1 g2 (DSG : in_denotational_sem_goal g1 f),
-                             in_denotational_sem_goal (Disj g1 g2) f
+                             [| Disj g1 g2 , f |]
 | dsgDisjR  : forall f g1 g2 (DSG : in_denotational_sem_goal g2 f),
-                             in_denotational_sem_goal (Disj g1 g2) f
-| dsgConj   : forall f g1 g2 (DSG_L : in_denotational_sem_goal g1 f)
-                             (DSG_R : in_denotational_sem_goal g2 f),
-                             in_denotational_sem_goal (Conj g1 g2) f
+                             [| Disj g1 g2 , f |]
+| dsgConj   : forall f g1 g2 (DSG_L : [| g1 , f |])
+                             (DSG_R : [| g2 , f |]),
+                             [| Conj g1 g2 , f |]
 | dsgFresh  : forall f fn a fg (A_NOT_FV : ~ is_fv_of_goal a (Fresh fg))
-                               (DSG : in_denotational_sem_goal (fg a) fn)
+                               (DSG : [| fg a , fn |])
                                (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
-                               in_denotational_sem_goal (Fresh fg) f
-| dsgInvoke : forall r t f (DSG : in_denotational_sem_goal (proj1_sig (MiniKanrenSyntax.P r) t) f),
-                           in_denotational_sem_goal (Invoke r t) f.
+                               [| Fresh fg , f |]
+| dsgInvoke : forall r t f (DSG : [| proj1_sig (MiniKanrenSyntax.P r) t , f |]),
+                              [| Invoke r t, f |]
+where "[| g , f |]" := (in_denotational_sem_goal g f).
 
 Hint Constructors in_denotational_sem_goal.
 
