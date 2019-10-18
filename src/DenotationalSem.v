@@ -197,11 +197,13 @@ where "[| g , f |]" := (in_denotational_sem_goal g f).
 
 Hint Constructors in_denotational_sem_goal.
 
+Reserved Notation "[| n | g , f |]" (at level 0).
+
 Inductive in_denotational_sem_lev_goal : nat -> goal -> gt_fun -> Prop :=
-| dslgCut    : forall l f, in_denotational_sem_lev_goal (S l) Cut f
+| dslgCut    : forall l f, [| (S l) | Cut , f |]
 | dslgUnify  : forall l f t1 t2 (UNI : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)),
-                                in_denotational_sem_lev_goal (S l) (Unify t1 t2) f
-| dslgDisjL  : forall l f g1 g2 (DSG : in_denotational_sem_lev_goal l g1 f),
+                                [| S l | Unify t1 t2 , f |]
+| dslgDisjL  : forall l f g1 g2 (DSG : [| l | g1 , f |]),
                                 in_denotational_sem_lev_goal l (Disj g1 g2) f
 | dslgDisjR  : forall l f g1 g2 (DSG : in_denotational_sem_lev_goal l g2 f),
                                 in_denotational_sem_lev_goal l (Disj g1 g2) f
@@ -213,7 +215,8 @@ Inductive in_denotational_sem_lev_goal : nat -> goal -> gt_fun -> Prop :=
                                   (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
                                   in_denotational_sem_lev_goal l (Fresh fg) f
 | dslgInvoke : forall l r t f (DSG : in_denotational_sem_lev_goal l (proj1_sig (MiniKanrenSyntax.P r) t) f),
-                              in_denotational_sem_lev_goal (S l) (Invoke r t) f.
+                              in_denotational_sem_lev_goal (S l) (Invoke r t) f
+where "[| n | g , f |]" := (in_denotational_sem_lev_goal n g f).
 
 Hint Constructors in_denotational_sem_lev_goal.
 
