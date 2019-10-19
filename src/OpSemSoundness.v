@@ -1,4 +1,3 @@
-
 Require Import List.
 Require Import Coq.Lists.ListSet.
 Import ListNotations.
@@ -15,15 +14,17 @@ Definition in_denotational_sem_subst (s : subst) (f : gt_fun) : Prop :=
 Definition in_denotational_analog (t : trace) (f : gt_fun) : Prop :=
   exists (s : subst) (n : nat), in_stream (Answer s n) t /\ in_denotational_sem_subst s f.
 
+Notation "{| t , f |}" := (in_denotational_analog t f).
+
 Inductive in_denotational_sem_state' : state' -> gt_fun -> Prop :=
-| dsst'Leaf : forall g s n f (DSG : in_denotational_sem_goal g f)
+| dsst'Leaf : forall g s n f (DSG : [| g , f |])
                              (DSS : in_denotational_sem_subst s f),
                              in_denotational_sem_state' (Leaf g s n) f
 | dsst'SumL : forall st1' st2' f (DSST' : in_denotational_sem_state' st1' f),
                                  in_denotational_sem_state' (Sum st1' st2') f
 | dsst'SumR : forall st1' st2' f (DSST' : in_denotational_sem_state' st2' f),
                                  in_denotational_sem_state' (Sum st1' st2') f
-| dsst'Prod : forall st' g f (DSG : in_denotational_sem_goal g f)
+| dsst'Prod : forall st' g f (DSG : [| g , f |])
                              (DSST' : in_denotational_sem_state' st' f),
                              in_denotational_sem_state' (Prod st' g) f.
 
@@ -104,7 +105,7 @@ Lemma search_correctness_generalized
       (f    : gt_fun)
       (t    : trace)
       (HOP  : op_sem st t)
-      (HDA  : in_denotational_analog t f) :
+      (HDA  : {| t , f |}) :
       in_denotational_sem_state st f.
 Proof.
   revert HOP WF. revert st.
@@ -144,7 +145,8 @@ Lemma search_correctness
       (f   : gt_fun)
       (t   : trace)
       (HOP : op_sem (State (Leaf g empty_subst k)) t)
-      (HDA : in_denotational_analog t f) : in_denotational_sem_goal g f.
+      (HDA : {| t , f |}) :
+      [| g , f |].
 Proof.
   remember (State (Leaf g empty_subst k)) as st.
   assert (in_denotational_sem_state st f).

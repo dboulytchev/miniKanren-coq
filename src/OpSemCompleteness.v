@@ -12,8 +12,11 @@ Require Import Omega.
 Definition in_denotational_sem_subst (s : subst) (f : gt_fun) : Prop :=
   exists (f' : gt_fun), gt_fun_eq (subst_gt_fun_compose s f') f.
 
+
 Definition in_denotational_analog (t : trace) (f : gt_fun) : Prop :=
   exists (s : subst) (n : nat), in_stream (Answer s n) t /\ in_denotational_sem_subst s f.
+
+Notation "{| t , f |}" := (in_denotational_analog t f).
 
 Lemma set_empty_union
       (s1 s2 : var_set)
@@ -91,9 +94,9 @@ Lemma search_completeness_generalized
       (t     : trace)
       (OP   : op_sem (State (Leaf g s n)) t)
       (f     : gt_fun)
-      (DSG : in_denotational_sem_lev_goal l g f)
+      (DSG : [| l | g , f |])
       (DSS : in_denotational_sem_subst s f) :
-      exists (f' : gt_fun), (in_denotational_analog t f') /\
+      exists (f' : gt_fun), {| t , f' |} /\
                             forall (x : name), x < n -> gt_eq (f x) (f' x).
 Proof.
   revert OP. revert t. revert CG DSG DSS WF. revert g f s n. induction l.
@@ -159,7 +162,7 @@ Proof.
         constructor; auto. intros.
         apply lt_le_trans with n; auto. }
       assert (Hg2' : in_denotational_sem_lev_goal (S l) g2 f').
-      { apply den_sem_fv_only with f; auto. intros. apply ff'_eq.
+      { apply completeness_condition with f; auto. intros. apply ff'_eq.
         good_inversion WF. auto. }
       specialize (IHg2 f' s' n' CG_G2 Hg2' HDAS' wfst'2 t2 OP2).
       destruct IHg2 as [f'' [HinDA f'f''_eq]]. red in HinDA.
@@ -263,7 +266,7 @@ Lemma search_completeness
       (f   : gt_fun)
       (t   : trace)
       (OP : op_sem (State (Leaf g empty_subst k)) t)
-      (HDS : in_denotational_sem_goal g f) :
+      (HDS : [| g , f |]) :
       exists (f' : gt_fun), (in_denotational_analog t f') /\
                             forall (x : name), In x (first_nats k) -> gt_eq (f x) (f' x).
 Proof.

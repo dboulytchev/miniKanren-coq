@@ -175,7 +175,7 @@ Proof.
 Qed.
 
 Reserved Notation "[| g , f |]" (at level 0).
-         
+
 Inductive in_denotational_sem_goal : goal -> gt_fun -> Prop :=
 | dsgCut    : forall f,  [| Cut , f |]
 | dsgUnify  : forall f t1 t2 (UNI : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)),
@@ -204,18 +204,18 @@ Inductive in_denotational_sem_lev_goal : nat -> goal -> gt_fun -> Prop :=
 | dslgUnify  : forall l f t1 t2 (UNI : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)),
                                 [| S l | Unify t1 t2 , f |]
 | dslgDisjL  : forall l f g1 g2 (DSG : [| l | g1 , f |]),
-                                in_denotational_sem_lev_goal l (Disj g1 g2) f
-| dslgDisjR  : forall l f g1 g2 (DSG : in_denotational_sem_lev_goal l g2 f),
-                                in_denotational_sem_lev_goal l (Disj g1 g2) f
-| dslgConj   : forall l f g1 g2 (DSG_L : in_denotational_sem_lev_goal l g1 f)
-                                (DSG_R : in_denotational_sem_lev_goal l g2 f),
-                                in_denotational_sem_lev_goal l (Conj g1 g2) f
+                                [| l | Disj g1 g2 , f |]
+| dslgDisjR  : forall l f g1 g2 (DSG : [| l | g2 , f |]),
+                                [| l | Disj g1 g2 , f |]
+| dslgConj   : forall l f g1 g2 (DSG_L : [| l | g1 , f |])
+                                (DSG_R : [| l | g2 , f |]),
+                                [| l | Conj g1 g2 , f |]
 | dslgFresh  : forall l f fn a fg (A_NOT_FV : ~ is_fv_of_goal a (Fresh fg))
-                                  (DSG : in_denotational_sem_lev_goal l (fg a) fn)
+                                  (DSG : [| l | (fg a) , fn |])
                                   (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
                                   in_denotational_sem_lev_goal l (Fresh fg) f
-| dslgInvoke : forall l r t f (DSG : in_denotational_sem_lev_goal l (proj1_sig (MiniKanrenSyntax.P r) t) f),
-                              in_denotational_sem_lev_goal (S l) (Invoke r t) f
+| dslgInvoke : forall l r t f (DSG : [| l | (proj1_sig (MiniKanrenSyntax.P r) t) , f |]),
+                              [| S l | Invoke r t , f |]
 where "[| n | g , f |]" := (in_denotational_sem_lev_goal n g f).
 
 Hint Constructors in_denotational_sem_lev_goal.
@@ -223,7 +223,7 @@ Hint Constructors in_denotational_sem_lev_goal.
 Lemma in_denotational_sem_zero_lev
       (g : goal)
       (f : gt_fun) :
-      ~ in_denotational_sem_lev_goal 0 g f.
+      ~ [| 0 | g , f |].
 Proof.
   intro. remember 0 as l. induction H; inversion Heql; auto.
 Qed.
@@ -232,10 +232,10 @@ Lemma in_denotational_sem_lev_monotone
       (l : nat)
       (g : goal)
       (f : gt_fun)
-      (DSG : in_denotational_sem_lev_goal l g f)
+      (DSG : [| l | g , f |])
       (l' : nat)
       (LE: l <= l')
-      : in_denotational_sem_lev_goal l' g f.
+      : [| l' | g , f |].
 Proof.
   revert LE. revert l'. induction DSG; eauto.
   1-2: intros; destruct l'; auto; inversion LE.
@@ -247,8 +247,8 @@ Qed.
 Lemma in_denotational_sem_some_lev
       (g : goal)
       (f : gt_fun)
-      (DSG : in_denotational_sem_goal g f) :
-      exists l, in_denotational_sem_lev_goal l g f.
+      (DSG : [| g , f |]) :
+      exists l, [| l | g , f |].
 Proof.
   induction DSG.
   1-2: exists 1; auto.
@@ -259,13 +259,13 @@ Proof.
     { eapply in_denotational_sem_lev_monotone; eauto. apply PeanoNat.Nat.le_max_r. } }
 Qed.
 
-Lemma den_sem_fv_only
+Lemma completeness_condition
       (f f' : gt_fun)
       (g : goal)
       (l : nat)
       (FF'_EQ : forall x, is_fv_of_goal x g -> gt_eq (f x) (f' x))
-      (DSG : in_denotational_sem_lev_goal l g f) :
-      in_denotational_sem_lev_goal l g f'.
+      (DSG : [| l | g , f |]) :
+      [| l | g , f' |].
 Proof.
   revert FF'_EQ. revert f'. induction DSG; intros.
   { constructor. }
@@ -311,10 +311,10 @@ Lemma den_sem_rename_var
       (REN : renaming a1 a2 g1 g2)
       (fa1 fa2 : gt_fun)
       (l : nat)
-      (DSG1 : in_denotational_sem_lev_goal l g1 fa1)
+      (DSG1 : [| l | g1 , fa1 |])
       (F_SWITCH : gt_eq (fa1 a1) (fa2 a2))
       (F12_EQ : forall x, x <> a1 -> x <> a2 -> gt_eq (fa1 x) (fa2 x)) :
-      in_denotational_sem_lev_goal l g2 fa2.
+      [| l | g2 , fa2 |].
 Proof.
   revert CG G1_BOUND G2_BOUND A12_NEQ A2_FRESH REN DSG1 F_SWITCH F12_EQ.
   revert g1 g2 n a1 a2 fa1 fa2.
@@ -337,7 +337,7 @@ Proof.
     { constructor; eauto.
       { eapply IHg1_1; eauto. }
       { eapply IHg1_2; eauto. } }
-    { apply den_sem_fv_only with fa1.
+    { apply completeness_condition with fa1.
       { intros; apply F12_EQ; intro; subst; auto. }
       { econstructor.
         2: eauto.
@@ -441,10 +441,10 @@ Lemma den_sem_another_fresh_var
       (DSG1 : in_denotational_sem_lev_goal l (b a1) fa1)
       (F_SWITCH : gt_eq (fa1 a1) (fa2 a2))
       (F12_EQ : forall x, x <> a1 -> x <> a2 -> gt_eq (fa1 x) (fa2 x)) :
-      in_denotational_sem_lev_goal l (b a2) fa2.
+      [| l | b a2 , fa2 |].
 Proof.
   destruct (name_eq_dec a1 a2); subst.
-  { apply den_sem_fv_only with fa1; auto.
+  { apply completeness_condition with fa1; auto.
     intros. destruct (name_eq_dec x a2); subst; auto. }
   { good_inversion CG. red in CB_FG.
     eapply den_sem_rename_var with (g1 := (b a1)) (n := max n (max (S a1) (S a2))); eauto.
