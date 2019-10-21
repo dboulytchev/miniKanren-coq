@@ -1,7 +1,7 @@
 # miniKanren-coq
 A certified semantics for relational programming workout.
 
-Folder 'src' contains the formalization of the system and all the proofs:
+The folder 'src' contains the formalization of the system and all the proofs:
 
 - Unify.v -- preliminaries from unification theory (terms, substitutions, computation of the most general unifier)
 - Stream.v -- (possibly infinite) streams and their properties 
@@ -13,9 +13,9 @@ Folder 'src' contains the formalization of the system and all the proofs:
 - OperationalSemSLD.v -- operational semantics for the SLD search (with cuts)
 - OpSemSLDSoundness.v -- soundness of the SLD search (with cuts)
 
-Folder 'extracted' contains reference interpreters:
+The folder 'extracted' contains reference interpreters:
 
-- interpreter.hs -- code extracted from interleaving search semantics (from OperationalSem.v)
-- interpreter_wrapped.hs -- code from interpreter_wrapped.hs appended with primitives for more convenient use and some tests
-- sld_interpreter.hs -- code extracted from interleaving search semantics (from OperationalSem.v)
-- sld_interpreter_wrapped.hs -- code from sld_interpreter_wrapped.hs appended with primitives for more convenient use (including the Prolog to MiniKanren translation) and some tests
+- interpreter.hs -- the code extracted from interleaving search semantics (from OperationalSem.v)
+- interpreter_wrapped.hs -- the code from interpreter_wrapped.hs appended with primitives for more convenient use and some tests
+- sld_interpreter.hs -- the code extracted from interleaving search semantics (from OperationalSem.v)
+- sld_interpreter_wrapped.hs -- the code from sld_interpreter_wrapped.hs appended with primitives for more convenient use (including the Prolog to MiniKanren translation) and some tests
