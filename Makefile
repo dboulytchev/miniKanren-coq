@@ -32,3 +32,6 @@ tounicode:
 	sed -i 's/;;/⨾/g' $(COQTHEORIES)
 	sed -i 's/<|/⦗/g' $(COQTHEORIES)
 	sed -i 's/|>/⦘/g' $(COQTHEORIES)
+
+archive: clean
+	tar czf ../certified-semantics-src.tgz .
