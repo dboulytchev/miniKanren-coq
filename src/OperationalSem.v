@@ -91,7 +91,7 @@ Inductive eval_step : state' -> label -> state -> Set :=
 | esDisj         : forall g1 g2     s    n, eval_step (Leaf (Disj g1 g2) s n) Step (State (Sum (Leaf g1 s n) (Leaf g2 s n)))
 | esConj         : forall g1 g2     s    n, eval_step (Leaf (Conj g1 g2) s n) Step (State (Prod (Leaf g1 s n) g2))
 | esFresh        : forall fg        s    n, eval_step (Leaf (Fresh fg) s n)   Step (State (Leaf (fg n) s (S n)))
-| esInvoke       : forall r arg     s    n, eval_step (Leaf (Invoke r arg) s n) Step (State (Leaf (proj1_sig (MiniKanrenSyntax.P r) arg) s n))
+| esInvoke       : forall r arg     s    n, eval_step (Leaf (Invoke r arg) s n) Step (State (Leaf (proj1_sig (MiniKanrenSyntax.Prog r) arg) s n))
 | esSumE         : forall st1 st2        l  (STEP_L : eval_step st1 l  Stop),
                                             eval_step (Sum st1 st2) l (State st2)
 | esSumNE        : forall st1 st1' st2   l  (STEP_L : eval_step st1 l (State st1')),
@@ -223,7 +223,7 @@ Proof.
     { omega. }
     { apply Nat.lt_lt_succ_r. apply FV_LT_COUNTER. econstructor; eauto. } }
   { constructor. constructor; auto.
-    specialize (proj2_sig (MiniKanrenSyntax.P r)). intro CC.
+    specialize (proj2_sig (MiniKanrenSyntax.Prog r)). intro CC.
     simpl in CC. destruct CC as [CL _]. red in CL. red in CL. auto. }
   { specialize (IHEV WF_L).
     good_inversion IHEV. auto. }

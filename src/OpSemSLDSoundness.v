@@ -8,15 +8,15 @@ Require Import OperationalSemSLD.
 Require Import DenotationalSem.
 Require Import Omega.
 
-Definition in_denotational_sem_subst (s : subst) (f : gt_fun) : Prop :=
-  exists (f' : gt_fun), gt_fun_eq (subst_gt_fun_compose s f') f.
+Definition in_denotational_sem_subst (s : subst) (f : repr_fun) : Prop :=
+  exists (f' : repr_fun), repr_fun_eq (subst_repr_fun_compose s f') f.
 
-Definition in_denotational_analog (t : trace) (f : gt_fun) : Prop :=
+Definition in_denotational_analog (t : trace) (f : repr_fun) : Prop :=
   exists (s : subst) (n : nat), in_stream (Answer s n) t /\ in_denotational_sem_subst s f.
 
 Notation "{| t , f |}" := (in_denotational_analog t f).
 
-Inductive in_denotational_sem_state' : state' -> gt_fun -> Prop :=
+Inductive in_denotational_sem_state' : state' -> repr_fun -> Prop :=
 | dsst'Leaf : forall g s n f (DSG : in_denotational_sem_goal g f)
                              (DSS : in_denotational_sem_subst s f),
                              in_denotational_sem_state' (Leaf g s n) f
@@ -30,7 +30,7 @@ Inductive in_denotational_sem_state' : state' -> gt_fun -> Prop :=
 
 Hint Constructors in_denotational_sem_state'.
 
-Inductive in_denotational_sem_state : state -> gt_fun -> Prop :=
+Inductive in_denotational_sem_state : state -> repr_fun -> Prop :=
 | dsstState : forall st' f (DSST' : in_denotational_sem_state' st' f),
                            in_denotational_sem_state (State st') f.
 
@@ -40,7 +40,7 @@ Hint Constructors in_denotational_sem_state.
 Lemma answer_correct
       (s : subst)
       (n : nat)
-      (f : gt_fun)
+      (f : repr_fun)
       (DSS : in_denotational_sem_subst s f)
       (st' : state')
       (cs : cut_signal)
@@ -54,24 +54,24 @@ Proof.
   destruct DSS as [f' ff'_con].
   constructor.
   { constructor. red.
-    specialize (gt_fun_eq_apply _ _ t1 ff'_con). intro. rewrite <- H.
-    specialize (gt_fun_eq_apply _ _ t2 ff'_con). intro. rewrite <- H0.
-    rewrite gt_fun_apply_compose. rewrite gt_fun_apply_compose.
+    specialize (repr_fun_eq_apply _ _ t1 ff'_con). intro. rewrite <- H.
+    specialize (repr_fun_eq_apply _ _ t2 ff'_con). intro. rewrite <- H0.
+    rewrite repr_fun_apply_compose. rewrite repr_fun_apply_compose.
     rewrite compose_correctness. rewrite compose_correctness.
     apply mgu_unifies in MGU. rewrite MGU. reflexivity. }
-  { red. exists (subst_gt_fun_compose s' f').
+  { red. exists (subst_repr_fun_compose s' f').
     red. intros. red.
     red in ff'_con. specialize (ff'_con x). red in ff'_con.
-    rewrite <- ff'_con. unfold subst_gt_fun_compose.
-    replace (fun x0 : name => apply_gt_fun f' (apply_subst s' (Var x0)))
-      with (subst_gt_fun_compose s' f').
+    rewrite <- ff'_con. unfold subst_repr_fun_compose.
+    replace (fun x0 : name => apply_repr_fun f' (apply_subst s' (Var x0)))
+      with (subst_repr_fun_compose s' f').
     2: reflexivity.
-    rewrite gt_fun_apply_compose. rewrite compose_correctness.
+    rewrite repr_fun_apply_compose. rewrite compose_correctness.
     reflexivity. }
 Qed.
 
 Lemma next_state_correct
-      (f : gt_fun)
+      (f : repr_fun)
       (st : state)
       (DSS : in_denotational_sem_state st f)
       (st' : state')
@@ -106,7 +106,7 @@ Qed.
 Lemma search_correctness_generalized
       (st   : state)
       (WF : well_formed_state st)
-      (f    : gt_fun)
+      (f    : repr_fun)
       (t    : trace)
       (HOP  : op_sem_SLD st t)
       (HDA  : {| t , f |}) :
@@ -146,7 +146,7 @@ Lemma SLD_search_correctness
       (g   : goal)
       (k   : nat)
       (HC  : closed_goal_in_context (first_nats k) g)
-      (f   : gt_fun)
+      (f   : repr_fun)
       (t   : trace)
       (HOP : op_sem_SLD (State (Leaf g empty_subst k)) t)
       (HDA : {| t , f |}) :

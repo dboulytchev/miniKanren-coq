@@ -100,7 +100,7 @@ Inductive eval_step_SLD : state' -> label -> cut_signal -> state -> Set :=
 | esDisj         : forall g1 g2     s    n, eval_step_SLD (Leaf (Disj g1 g2) s n) Step NoCutting (State (Sum StopCutting (Leaf g1 s n) (Leaf g2 s n)))
 | esConj         : forall g1 g2     s    n, eval_step_SLD (Leaf (Conj g1 g2) s n) Step NoCutting (State (Prod (Leaf g1 s n) g2))
 | esFresh        : forall fg        s    n, eval_step_SLD (Leaf (Fresh fg) s n)   Step NoCutting (State (Leaf (fg n) s (S n)))
-| esInvoke       : forall r arg     s    n, eval_step_SLD (Leaf (Invoke r arg) s n) Step NoCutting (State (Leaf (proj1_sig (MiniKanrenSyntax.P r) arg) s n))
+| esInvoke       : forall r arg     s    n, eval_step_SLD (Leaf (Invoke r arg) s n) Step NoCutting (State (Leaf (proj1_sig (MiniKanrenSyntax.Prog r) arg) s n))
 | esSumE         : forall st1 m      st2 l  (STEP_L : eval_step_SLD st1 l NoCutting Stop),
                                             eval_step_SLD (Sum m st1 st2) l NoCutting (State st2)
 | esSumECS       : forall st1        st2 l  (STEP_L : eval_step_SLD st1 l YesCutting Stop),
@@ -248,7 +248,7 @@ Proof.
     { omega. }
     { apply Nat.lt_lt_succ_r. apply FV_LT_COUNTER. econstructor; eauto. } }
   { constructor. constructor; auto.
-    specialize (proj2_sig (MiniKanrenSyntax.P r)). intro CC.
+    specialize (proj2_sig (MiniKanrenSyntax.Prog r)). intro CC.
     simpl in CC. destruct CC as [CL _]. red in CL. red in CL. auto. }
   { specialize (IHEV WF_L).
     good_inversion IHEV. auto. }

@@ -1,4 +1,3 @@
-
 Require Import List.
 Import ListNotations.
 Require Import Coq.Lists.ListSet.
@@ -149,4 +148,4 @@ Definition def : Set := {r : rel | closed_rel r /\ consistent_rel r}.
 
 Definition spec : Set := name -> def.
 
-Variable P : spec.
+Variable Prog : spec.

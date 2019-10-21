@@ -1,4 +1,3 @@
-
 Require Import List.
 Require Import Coq.Lists.ListSet.
 Import ListNotations.
@@ -9,11 +8,11 @@ Require Import OperationalSem.
 Require Import DenotationalSem.
 Require Import Omega.
 
-Definition in_denotational_sem_subst (s : subst) (f : gt_fun) : Prop :=
-  exists (f' : gt_fun), gt_fun_eq (subst_gt_fun_compose s f') f.
+Definition in_denotational_sem_subst (s : subst) (f : repr_fun) : Prop :=
+  exists (f' : repr_fun), repr_fun_eq (subst_repr_fun_compose s f') f.
 
 
-Definition in_denotational_analog (t : trace) (f : gt_fun) : Prop :=
+Definition in_denotational_analog (t : trace) (f : repr_fun) : Prop :=
   exists (s : subst) (n : nat), in_stream (Answer s n) t /\ in_denotational_sem_subst s f.
 
 Notation "{| t , f |}" := (in_denotational_analog t f).
@@ -36,14 +35,14 @@ Qed.
 
 Lemma unfier_from_gt_unifier
       (t1 t2 : term)
-      (f : gt_fun)
-      (F_UNIFIES : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)) :
+      (f : repr_fun)
+      (F_UNIFIES : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)) :
       exists s, unifier s t1 t2 /\ in_denotational_sem_subst s f.
 Proof.
   remember (map (fun x => (x, proj1_sig (f x))) (var_set_union (fv_term t1) (fv_term t2))) as s.
   exists s. split.
   { red. red in F_UNIFIES.
-    assert (apply_subst s t1 = proj1_sig (apply_gt_fun f t1)).
+    assert (apply_subst s t1 = proj1_sig (apply_repr_fun f t1)).
     { clear F_UNIFIES.
       assert (forall x, In x (fv_term t1) -> image s x = Some (proj1_sig (f x))).
       { intros. assert (In x (var_set_union (fv_term t1) (fv_term t2))).
@@ -51,7 +50,7 @@ Proof.
         remember (var_set_union (fv_term t1) (fv_term t2)).
         subst. apply map_image. auto. }
       apply subst_of_gt. auto. }
-    assert (apply_subst s t2 = proj1_sig (apply_gt_fun f t2)).
+    assert (apply_subst s t2 = proj1_sig (apply_repr_fun f t2)).
     { clear F_UNIFIES.
       assert (forall x, In x (fv_term t2) -> image s x = Some (proj1_sig (f x))).
       { intros. assert (In x (var_set_union (fv_term t1) (fv_term t2))).
@@ -60,7 +59,7 @@ Proof.
         subst. apply map_image. auto. }
       apply subst_of_gt. auto. }
     congruence. }
-  { red. exists f. red. intros x. unfold subst_gt_fun_compose.
+  { red. exists f. red. intros x. unfold subst_repr_fun_compose.
     unfold apply_subst. destruct (image s x) eqn:eq.
     { destruct (f x) eqn:eqfx.
       assert (x0 = t).
@@ -78,8 +77,8 @@ Proof.
       { auto. }
       { simpl in e. apply set_empty_union in e. destruct e.
         apply IHt1 in H. apply IHt2 in H0. simpl.
-        destruct (apply_gt_fun f t3). simpl in H.
-        destruct (apply_gt_fun f t4). simpl in H0.
+        destruct (apply_repr_fun f t3). simpl in H.
+        destruct (apply_repr_fun f t4). simpl in H0.
         simpl. subst. auto. } }
     { red. auto. } }
 Qed.
@@ -93,10 +92,10 @@ Lemma search_completeness_generalized
       (WF : well_formed_state' (Leaf g s n))
       (t     : trace)
       (OP   : op_sem (State (Leaf g s n)) t)
-      (f     : gt_fun)
+      (f     : repr_fun)
       (DSG : [| l | g , f |])
       (DSS : in_denotational_sem_subst s f) :
-      exists (f' : gt_fun), {| t , f' |} /\
+      exists (f' : repr_fun), {| t , f' |} /\
                             forall (x : name), x < n -> gt_eq (f x) (f' x).
 Proof.
   revert OP. revert t. revert CG DSG DSS WF. revert g f s n. induction l.
@@ -110,25 +109,25 @@ Proof.
     { exists f. split.
       2: intros; red; auto.
       good_inversion DSG. red in DSS. destruct DSS as [fs s_fs_f].
-      assert (gt_eq (apply_gt_fun fs (apply_subst s t)) (apply_gt_fun fs (apply_subst s t0))).
-      { red. rewrite <- gt_fun_apply_compose. rewrite <- gt_fun_apply_compose.
-        apply eq_trans with (proj1_sig (apply_gt_fun f t)).
-        { apply gt_fun_eq_apply. auto. }
-        { apply eq_trans with (proj1_sig (apply_gt_fun f t0)); auto.
-          symmetry. apply gt_fun_eq_apply. auto. } }
+      assert (gt_eq (apply_repr_fun fs (apply_subst s t)) (apply_repr_fun fs (apply_subst s t0))).
+      { red. rewrite <- repr_fun_apply_compose. rewrite <- repr_fun_apply_compose.
+        apply eq_trans with (proj1_sig (apply_repr_fun f t)).
+        { apply repr_fun_eq_apply. auto. }
+        { apply eq_trans with (proj1_sig (apply_repr_fun f t0)); auto.
+          symmetry. apply repr_fun_eq_apply. auto. } }
       apply unfier_from_gt_unifier in H. destruct H as [u [u_uni u_fs]].
       good_inversion OP. good_inversion EV.
       { specialize (mgu_non_unifiable _ _ MGU u u_uni). contradiction. }
       { rename s' into m. red. exists (compose s m). exists n. split; try constructor.
         specialize (mgu_most_general _ _ _ u MGU u_uni). intro Hmg.
         red in Hmg. destruct Hmg as [ds u_ds_m]. red in u_fs.
-        destruct u_fs as [fss u_fss_fs]. red. exists (subst_gt_fun_compose ds fss).
-        eapply gt_fun_eq_trans. 2: eauto.
-        eapply gt_fun_eq_trans. eapply subst_gt_fun_compose_assoc_subst.
-        eapply gt_fun_eq_trans. 2: eapply gt_fun_eq_compose; eauto.
-        apply gt_fun_eq_compose.
-        eapply gt_fun_eq_trans. red; symmetry; eapply subst_gt_fun_compose_assoc_subst.
-        apply gt_fun_compose_eq. intros. rewrite u_ds_m. apply compose_correctness. } }
+        destruct u_fs as [fss u_fss_fs]. red. exists (subst_repr_fun_compose ds fss).
+        eapply repr_fun_eq_trans. 2: eauto.
+        eapply repr_fun_eq_trans. eapply subst_repr_fun_compose_assoc_subst.
+        eapply repr_fun_eq_trans. 2: eapply repr_fun_eq_compose; eauto.
+        apply repr_fun_eq_compose.
+        eapply repr_fun_eq_trans. red; symmetry; eapply subst_repr_fun_compose_assoc_subst.
+        apply repr_fun_compose_eq. intros. rewrite u_ds_m. apply compose_correctness. } }
     { good_inversion OP. inversion EV; subst.
       apply well_formedness_preservation in EV; auto. good_inversion EV.
       good_inversion wfState.
@@ -162,7 +161,7 @@ Proof.
         constructor; auto. intros.
         apply lt_le_trans with n; auto. }
       assert (Hg2' : in_denotational_sem_lev_goal (S l) g2 f').
-      { apply completeness_condition with f; auto. intros. apply ff'_eq.
+      { apply completeness_condition_lev with f; auto. intros. apply ff'_eq.
         good_inversion WF. auto. }
       specialize (IHg2 f' s' n' CG_G2 Hg2' HDAS' wfst'2 t2 OP2).
       destruct IHg2 as [f'' [HinDA f'f''_eq]]. red in HinDA.
@@ -183,7 +182,7 @@ Proof.
       remember (fun x => if name_eq_dec x n
                          then fa a
                          else if name_eq_dec x a
-                              then (subst_gt_fun_compose s fs') a
+                              then (subst_repr_fun_compose s fs') a
                               else fa x) as fn.
       assert (H_n_is_fresh : forall x, In n (fv_term (apply_subst s (Var x))) -> x = n).
       { intros. simpl in H0.
@@ -201,7 +200,7 @@ Proof.
         { intros. destruct (name_eq_dec x n); try contradiction.
           destruct (name_eq_dec x a); try contradiction. reflexivity. } }
       assert (DSSn: in_denotational_sem_subst s fn).
-      { red. exists fs'. red. intros. red. unfold subst_gt_fun_compose.
+      { red. exists fs'. red. intros. red. unfold subst_repr_fun_compose.
         rewrite Heqfs'. rewrite Heqfn. destruct (name_eq_dec x n).
         { assert (H_n_is_fresh_2 : apply_subst s (Var n) = Var n).
           { simpl. destruct (image s n) eqn:eq; auto.
@@ -214,8 +213,8 @@ Proof.
           { rewrite e. rewrite Heqfs'. auto. }
           { specialize (EASE x n1). rewrite EASE.
             red in fssf'_eq. specialize (fssf'_eq x). red in fssf'_eq.
-            rewrite <- fssf'_eq. unfold subst_gt_fun_compose.
-            apply apply_gt_fun_fv. intros. destruct (name_eq_dec x0 n).
+            rewrite <- fssf'_eq. unfold subst_repr_fun_compose.
+            apply apply_repr_fun_fv. intros. destruct (name_eq_dec x0 n).
             { rewrite e in H0. apply H_n_is_fresh in H0. contradiction. }
             { reflexivity. } } } }
       specialize (H n fn s (S n) (CG_BODY n) Hgn DSSn wfState t0 OP0).
@@ -228,18 +227,18 @@ Proof.
         destruct (name_eq_dec x a).
         { rewrite e.
           red in fssf'_eq. specialize (fssf'_eq a). red in fssf'_eq.
-          rewrite <- fssf'_eq. unfold subst_gt_fun_compose.
-          apply apply_gt_fun_fv. intros. rewrite Heqfs'.
+          rewrite <- fssf'_eq. unfold subst_repr_fun_compose.
+          apply apply_repr_fun_fv. intros. rewrite Heqfs'.
           destruct (name_eq_dec x0 n).
           { auto. rewrite e0 in H1. apply H_n_is_fresh in H1. subst. contradiction. }
           { unfold gt_eq. auto. } }
         { specialize (EASE x n1). rewrite EASE. auto. } } }
     { good_inversion DSG. good_inversion OP. inversion EV; subst.
       apply well_formedness_preservation in EV; auto. good_inversion EV.
-      assert (cg_body : consistent_goal (proj1_sig (MiniKanrenSyntax.P n) t)).
-      { remember (MiniKanrenSyntax.P n) as d. destruct d as [rel [Hcl Hco]].
+      assert (cg_body : consistent_goal (proj1_sig (MiniKanrenSyntax.Prog n) t)).
+      { remember (MiniKanrenSyntax.Prog n) as d. destruct d as [rel [Hcl Hco]].
         red in Hco. destruct (Hco t) as [Hcog Hcof]. auto. }
-      specialize (IHl (proj1_sig (MiniKanrenSyntax.P n) t) f s n0 cg_body DSG0 DSS wfState t1 OP0).
+      specialize (IHl (proj1_sig (MiniKanrenSyntax.Prog n) t) f s n0 cg_body DSG0 DSS wfState t1 OP0).
       destruct IHl as [f' [HinDA ff'_eq]]. exists f'. split; auto.
       red. red in HinDA. destruct HinDA as [s' [n' [Hinstr HDAS]]].
       exists s'. exists n'. split; auto. constructor; auto. } }
@@ -263,11 +262,11 @@ Lemma search_completeness
       (CG    : consistent_goal g)
       (k   : nat)
       (HC  : closed_goal_in_context (first_nats k) g)
-      (f   : gt_fun)
+      (f   : repr_fun)
       (t   : trace)
       (OP : op_sem (State (Leaf g empty_subst k)) t)
       (HDS : [| g , f |]) :
-      exists (f' : gt_fun), (in_denotational_analog t f') /\
+      exists (f' : repr_fun), (in_denotational_analog t f') /\
                             forall (x : name), In x (first_nats k) -> gt_eq (f x) (f' x).
 Proof.
   apply in_denotational_sem_some_lev in HDS. destruct HDS as [l HDS].
@@ -278,7 +277,7 @@ Proof.
     { red in HC. intros. apply first_nats_less; auto. } }
   assert (DSS : in_denotational_sem_subst empty_subst f).
   { red. exists f. red. intros.
-    unfold subst_gt_fun_compose. rewrite apply_empty. reflexivity. }
+    unfold subst_repr_fun_compose. rewrite apply_empty. reflexivity. }
   specialize (search_completeness_generalized l g CG empty_subst k WF t OP f HDS DSS).
   intro. destruct H as [f' [HinDA ff'eq]]. exists f'. split; auto.
   intros. apply ff'eq. apply first_nats_less; auto.

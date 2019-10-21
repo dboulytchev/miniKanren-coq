@@ -1,4 +1,3 @@
-
 Require Import List.
 Require Import Coq.Lists.ListSet.
 Import ListNotations.
@@ -7,20 +6,20 @@ Require Import Unify.
 Require Import MiniKanrenSyntax.
 Require Import Omega.
 
-Definition gt_fun : Set := name -> ground_term.
+Definition repr_fun : Set := name -> ground_term.
 
 Definition gt_eq (gt1 : ground_term) (gt2 : ground_term) : Prop :=
   proj1_sig gt1 = proj1_sig gt2.
 
-Definition gt_fun_eq (f1 : gt_fun) (f2 : gt_fun) : Prop :=
+Definition repr_fun_eq (f1 : repr_fun) (f2 : repr_fun) : Prop :=
   forall x, gt_eq (f1 x) (f2 x).
 
-Fixpoint apply_gt_fun (f : gt_fun) (t : term) : ground_term.
+Fixpoint apply_repr_fun (f : repr_fun) (t : term) : ground_term.
 refine (
   match t with
   | Var x => f x
   | Cst n => exist _ (Cst n) eq_refl
-  | Con n l r => match apply_gt_fun f l, apply_gt_fun f r with
+  | Con n l r => match apply_repr_fun f l, apply_repr_fun f r with
                  | exist _ lt lg, exist _ rt rg => exist _ (Con n lt rt) _
                  end
   end
@@ -28,38 +27,38 @@ refine (
 simpl. rewrite lg. rewrite rg. reflexivity.
 Defined.
 
-Lemma gt_fun_eq_apply
-      (f1 f2 : gt_fun)
+Lemma repr_fun_eq_apply
+      (f1 f2 : repr_fun)
       (t : term)
-      (FEQ : gt_fun_eq f1 f2) :
-      gt_eq (apply_gt_fun f1 t) (apply_gt_fun f2 t).
+      (FEQ : repr_fun_eq f1 f2) :
+      gt_eq (apply_repr_fun f1 t) (apply_repr_fun f2 t).
 Proof.
   induction t.
   { simpl. auto. }
   { reflexivity. }
   { red. simpl.
-    destruct (apply_gt_fun f1 t1). destruct (apply_gt_fun f1 t2).
-    destruct (apply_gt_fun f2 t1). destruct (apply_gt_fun f2 t2).
+    destruct (apply_repr_fun f1 t1). destruct (apply_repr_fun f1 t2).
+    destruct (apply_repr_fun f2 t1). destruct (apply_repr_fun f2 t2).
     simpl.
     red in IHt1. simpl in IHt1.
     red in IHt2. simpl in IHt2.
     subst. auto. }
 Qed.
 
-Lemma apply_gt_fun_fv
-      (f1 f2 : gt_fun)
+Lemma apply_repr_fun_fv
+      (f1 f2 : repr_fun)
       (t : term)
       (F12_FV_EQ : forall x, (In x (fv_term t)) -> gt_eq (f1 x) (f2 x)) :
-      gt_eq (apply_gt_fun f1 t) (apply_gt_fun f2 t).
+      gt_eq (apply_repr_fun f1 t) (apply_repr_fun f2 t).
 Proof.
   induction t.
   { simpl. apply F12_FV_EQ. simpl. auto. }
   { unfold gt_eq. auto. }
   { unfold gt_eq. simpl.
-    remember (apply_gt_fun f1 t1) as p11. destruct p11.
-    remember (apply_gt_fun f1 t2) as p12. destruct p12.
-    remember (apply_gt_fun f2 t1) as p21. destruct p21.
-    remember (apply_gt_fun f2 t2) as p22. destruct p22.
+    remember (apply_repr_fun f1 t1) as p11. destruct p11.
+    remember (apply_repr_fun f1 t2) as p12. destruct p12.
+    remember (apply_repr_fun f2 t1) as p21. destruct p21.
+    remember (apply_repr_fun f2 t2) as p22. destruct p22.
     simpl.
     assert (x = x1).
     { apply IHt1. intros. apply F12_FV_EQ. unfold fv_term.
@@ -70,22 +69,22 @@ Proof.
     subst. auto. }
 Qed.
 
-Lemma gt_fun_eq_trans
-      (f1 f2 f3 : gt_fun)
-      (EQ12 : gt_fun_eq f1 f2)
-      (EQ23 : gt_fun_eq f2 f3) :
-      gt_fun_eq f1 f3.
+Lemma repr_fun_eq_trans
+      (f1 f2 f3 : repr_fun)
+      (EQ12 : repr_fun_eq f1 f2)
+      (EQ23 : repr_fun_eq f2 f3) :
+      repr_fun_eq f1 f3.
 Proof.
-  revert EQ12 EQ23. unfold gt_fun_eq. unfold gt_eq. intros.
+  revert EQ12 EQ23. unfold repr_fun_eq. unfold gt_eq. intros.
   rewrite EQ12. auto.
 Qed.
 
 Lemma subst_of_gt
       (t : term)
       (s : subst)
-      (f : gt_fun)
+      (f : repr_fun)
       (FV_IMG : forall x : name, In x (fv_term t) -> image s x = Some (proj1_sig (f x))) :
-      apply_subst s t = proj1_sig (apply_gt_fun f t).
+      apply_subst s t = proj1_sig (apply_repr_fun f t).
 Proof.
   induction t.
   { simpl. replace (image s n) with (Some (proj1_sig (f n))).
@@ -93,8 +92,8 @@ Proof.
     { symmetry. apply FV_IMG. constructor. auto. } }
   { auto. }
   { simpl.
-    destruct (apply_gt_fun f t1).
-    destruct (apply_gt_fun f t2).
+    destruct (apply_repr_fun f t1).
+    destruct (apply_repr_fun f t2).
     simpl.
     replace x with (apply_subst s t1).
     { replace x0 with (apply_subst s t2).
@@ -105,80 +104,80 @@ Proof.
       apply set_union_intro1. auto. } }
 Qed.
 
-Definition subst_gt_fun_compose (s : subst) (f : gt_fun) : gt_fun :=
-  fun x => apply_gt_fun f (apply_subst s (Var x)).
+Definition subst_repr_fun_compose (s : subst) (f : repr_fun) : repr_fun :=
+  fun x => apply_repr_fun f (apply_subst s (Var x)).
 
-Lemma gt_fun_apply_compose
+Lemma repr_fun_apply_compose
       (s : subst)
-      (f : gt_fun)
+      (f : repr_fun)
       (t : term) :
-      gt_eq (apply_gt_fun (subst_gt_fun_compose s f) t) (apply_gt_fun f (apply_subst s t)).
+      gt_eq (apply_repr_fun (subst_repr_fun_compose s f) t) (apply_repr_fun f (apply_subst s t)).
 Proof.
   induction t.
   { reflexivity. }
   { reflexivity. }
   { red. simpl.
-    destruct (apply_gt_fun (subst_gt_fun_compose s f) t1).
-    destruct (apply_gt_fun (subst_gt_fun_compose s f) t2).
-    destruct (apply_gt_fun f (apply_subst s t1)).
-    destruct (apply_gt_fun f (apply_subst s t2)).
+    destruct (apply_repr_fun (subst_repr_fun_compose s f) t1).
+    destruct (apply_repr_fun (subst_repr_fun_compose s f) t2).
+    destruct (apply_repr_fun f (apply_subst s t1)).
+    destruct (apply_repr_fun f (apply_subst s t2)).
     simpl.
     red in IHt1. simpl in IHt1.
     red in IHt2. simpl in IHt2.
     subst. auto. }
 Qed.
 
-Lemma gt_fun_eq_compose
-      (f1 f2 : gt_fun)
-      (EQ : gt_fun_eq f1 f2)
+Lemma repr_fun_eq_compose
+      (f1 f2 : repr_fun)
+      (EQ : repr_fun_eq f1 f2)
       (s : subst) :
-      gt_fun_eq (subst_gt_fun_compose s f1) (subst_gt_fun_compose s f2).
+      repr_fun_eq (subst_repr_fun_compose s f1) (subst_repr_fun_compose s f2).
 Proof.
-  unfold gt_fun_eq. unfold gt_fun_eq in EQ. unfold subst_gt_fun_compose.
+  unfold repr_fun_eq. unfold repr_fun_eq in EQ. unfold subst_repr_fun_compose.
   intro. induction (apply_subst s (Var x)).
   { simpl. auto. }
   { reflexivity. }
   { unfold gt_eq. simpl.
-    remember (apply_gt_fun f1 t1) as p11. destruct p11.
-    remember (apply_gt_fun f1 t2) as p12. destruct p12.
-    remember (apply_gt_fun f2 t1) as p21. destruct p21.
-    remember (apply_gt_fun f2 t2) as p22. destruct p22.
+    remember (apply_repr_fun f1 t1) as p11. destruct p11.
+    remember (apply_repr_fun f1 t2) as p12. destruct p12.
+    remember (apply_repr_fun f2 t1) as p21. destruct p21.
+    remember (apply_repr_fun f2 t2) as p22. destruct p22.
     simpl.
     unfold gt_eq in IHt1. simpl in IHt1. rewrite IHt1.
     unfold gt_eq in IHt2. simpl in IHt2. rewrite IHt2.
     auto. }
 Qed.
 
-Lemma gt_fun_compose_eq
-      (f : gt_fun)
+Lemma repr_fun_compose_eq
+      (f : repr_fun)
       (s1 s2 : subst)
       (EQ : forall t, apply_subst s1 t = apply_subst s2 t) :
-      gt_fun_eq (subst_gt_fun_compose s1 f) (subst_gt_fun_compose s2 f).
+      repr_fun_eq (subst_repr_fun_compose s1 f) (subst_repr_fun_compose s2 f).
 Proof.
-  unfold gt_fun_eq. unfold subst_gt_fun_compose. unfold gt_eq.
+  unfold repr_fun_eq. unfold subst_repr_fun_compose. unfold gt_eq.
   intro. rewrite EQ. auto.
 Qed.
 
-Lemma subst_gt_fun_compose_assoc_subst
-      (f : gt_fun)
+Lemma subst_repr_fun_compose_assoc_subst
+      (f : repr_fun)
       (s s' : subst) :
-      gt_fun_eq (subst_gt_fun_compose (compose s s') f)
-                (subst_gt_fun_compose s (subst_gt_fun_compose s' f)).
+      repr_fun_eq (subst_repr_fun_compose (compose s s') f)
+                (subst_repr_fun_compose s (subst_repr_fun_compose s' f)).
 Proof.
-  unfold gt_fun_eq. intros. unfold gt_eq.
-  replace (subst_gt_fun_compose (compose s s') f x) with
-          (apply_gt_fun (subst_gt_fun_compose (compose s s') f) (Var x)); auto.
-  rewrite gt_fun_apply_compose. rewrite compose_correctness.
-  replace (subst_gt_fun_compose s (subst_gt_fun_compose s' f) x) with
-          (apply_gt_fun (subst_gt_fun_compose s (subst_gt_fun_compose s' f)) (Var x)); auto.
-  rewrite gt_fun_apply_compose. rewrite gt_fun_apply_compose. auto.
+  unfold repr_fun_eq. intros. unfold gt_eq.
+  replace (subst_repr_fun_compose (compose s s') f x) with
+          (apply_repr_fun (subst_repr_fun_compose (compose s s') f) (Var x)); auto.
+  rewrite repr_fun_apply_compose. rewrite compose_correctness.
+  replace (subst_repr_fun_compose s (subst_repr_fun_compose s' f) x) with
+          (apply_repr_fun (subst_repr_fun_compose s (subst_repr_fun_compose s' f)) (Var x)); auto.
+  rewrite repr_fun_apply_compose. rewrite repr_fun_apply_compose. auto.
 Qed.
 
 Reserved Notation "[| g , f |]" (at level 0).
 
-Inductive in_denotational_sem_goal : goal -> gt_fun -> Prop :=
+Inductive in_denotational_sem_goal : goal -> repr_fun -> Prop :=
 | dsgCut    : forall f,  [| Cut , f |]
-| dsgUnify  : forall f t1 t2 (UNI : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)),
+| dsgUnify  : forall f t1 t2 (UNI : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
                              [| Unify t1 t2 , f |]
 | dsgDisjL  : forall f g1 g2 (DSG : in_denotational_sem_goal g1 f),
                              [| Disj g1 g2 , f |]
@@ -191,7 +190,7 @@ Inductive in_denotational_sem_goal : goal -> gt_fun -> Prop :=
                                (DSG : [| fg a , fn |])
                                (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
                                [| Fresh fg , f |]
-| dsgInvoke : forall r t f (DSG : [| proj1_sig (MiniKanrenSyntax.P r) t , f |]),
+| dsgInvoke : forall r t f (DSG : [| proj1_sig (MiniKanrenSyntax.Prog r) t , f |]),
                               [| Invoke r t, f |]
 where "[| g , f |]" := (in_denotational_sem_goal g f).
 
@@ -199,9 +198,9 @@ Hint Constructors in_denotational_sem_goal.
 
 Reserved Notation "[| n | g , f |]" (at level 0).
 
-Inductive in_denotational_sem_lev_goal : nat -> goal -> gt_fun -> Prop :=
+Inductive in_denotational_sem_lev_goal : nat -> goal -> repr_fun -> Prop :=
 | dslgCut    : forall l f, [| (S l) | Cut , f |]
-| dslgUnify  : forall l f t1 t2 (UNI : gt_eq (apply_gt_fun f t1) (apply_gt_fun f t2)),
+| dslgUnify  : forall l f t1 t2 (UNI : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
                                 [| S l | Unify t1 t2 , f |]
 | dslgDisjL  : forall l f g1 g2 (DSG : [| l | g1 , f |]),
                                 [| l | Disj g1 g2 , f |]
@@ -214,7 +213,7 @@ Inductive in_denotational_sem_lev_goal : nat -> goal -> gt_fun -> Prop :=
                                   (DSG : [| l | (fg a) , fn |])
                                   (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
                                   in_denotational_sem_lev_goal l (Fresh fg) f
-| dslgInvoke : forall l r t f (DSG : [| l | (proj1_sig (MiniKanrenSyntax.P r) t) , f |]),
+| dslgInvoke : forall l r t f (DSG : [| l | (proj1_sig (MiniKanrenSyntax.Prog r) t) , f |]),
                               [| S l | Invoke r t , f |]
 where "[| n | g , f |]" := (in_denotational_sem_lev_goal n g f).
 
@@ -222,7 +221,7 @@ Hint Constructors in_denotational_sem_lev_goal.
 
 Lemma in_denotational_sem_zero_lev
       (g : goal)
-      (f : gt_fun) :
+      (f : repr_fun) :
       ~ [| 0 | g , f |].
 Proof.
   intro. remember 0 as l. induction H; inversion Heql; auto.
@@ -231,7 +230,7 @@ Qed.
 Lemma in_denotational_sem_lev_monotone
       (l : nat)
       (g : goal)
-      (f : gt_fun)
+      (f : repr_fun)
       (DSG : [| l | g , f |])
       (l' : nat)
       (LE: l <= l')
@@ -246,7 +245,7 @@ Qed.
 
 Lemma in_denotational_sem_some_lev
       (g : goal)
-      (f : gt_fun)
+      (f : repr_fun)
       (DSG : [| g , f |]) :
       exists l, [| l | g , f |].
 Proof.
@@ -259,8 +258,19 @@ Proof.
     { eapply in_denotational_sem_lev_monotone; eauto. apply PeanoNat.Nat.le_max_r. } }
 Qed.
 
-Lemma completeness_condition
-      (f f' : gt_fun)
+Lemma in_denotational_sem_drop_lev
+      (g : goal)
+      (f : repr_fun)
+      (l : nat)
+      (DSLG : [| l | g , f |]) :
+      [| g , f |].
+Proof.
+  induction DSLG; eauto.
+Qed.
+
+
+Lemma completeness_condition_lev
+      (f f' : repr_fun)
       (g : goal)
       (l : nat)
       (FF'_EQ : forall x, is_fv_of_goal x g -> gt_eq (f x) (f' x))
@@ -269,10 +279,10 @@ Lemma completeness_condition
 Proof.
   revert FF'_EQ. revert f'. induction DSG; intros.
   { constructor. }
-  { constructor. assert (gt_eq (apply_gt_fun f t1) (apply_gt_fun f' t1)).
-    { apply apply_gt_fun_fv. auto. }
-    assert (gt_eq (apply_gt_fun f t2) (apply_gt_fun f' t2)).
-    { apply apply_gt_fun_fv. auto. }
+  { constructor. assert (gt_eq (apply_repr_fun f t1) (apply_repr_fun f' t1)).
+    { apply apply_repr_fun_fv. auto. }
+    assert (gt_eq (apply_repr_fun f t2) (apply_repr_fun f' t2)).
+    { apply apply_repr_fun_fv. auto. }
     revert UNI H H0. unfold gt_eq. intros. congruence. }
   { constructor. apply IHDSG. intros.
     apply FF'_EQ. auto. }
@@ -295,8 +305,21 @@ Proof.
       reflexivity. } }
   { constructor. apply IHDSG. intros.
     apply FF'_EQ. constructor.
-    remember (MiniKanrenSyntax.P r). destruct d as [rel [Hcl Hco]].
+    remember (MiniKanrenSyntax.Prog r). destruct d as [rel [Hcl Hco]].
     simpl in H. red in Hcl. red in Hcl. auto. }
+Qed.
+
+Lemma completeness_condition
+      (f f' : repr_fun)
+      (g : goal)
+      (FF'_EQ : forall x, is_fv_of_goal x g -> gt_eq (f x) (f' x))
+      (DSG : [| g , f |]) :
+      [| g , f' |].
+Proof.
+  apply in_denotational_sem_some_lev in DSG.
+  destruct DSG as [l DSLG].
+  eapply in_denotational_sem_drop_lev.
+  eapply completeness_condition_lev; eauto.
 Qed.
 
 Lemma den_sem_rename_var
@@ -309,7 +332,7 @@ Lemma den_sem_rename_var
       (A12_NEQ : a1 <> a2)
       (A2_FRESH : ~ is_fv_of_goal a2 g1)
       (REN : renaming a1 a2 g1 g2)
-      (fa1 fa2 : gt_fun)
+      (fa1 fa2 : repr_fun)
       (l : nat)
       (DSG1 : [| l | g1 , fa1 |])
       (F_SWITCH : gt_eq (fa1 a1) (fa2 a2))
@@ -328,8 +351,8 @@ Proof.
       2: apply UNI.
       1-2: etransitivity.
       1, 3: symmetry.
-      1, 4: apply gt_fun_apply_compose.
-      all: apply apply_gt_fun_fv; intros; unfold subst_gt_fun_compose;
+      1, 4: apply repr_fun_apply_compose.
+      all: apply apply_repr_fun_fv; intros; unfold subst_repr_fun_compose;
         simpl; destruct (Nat.eq_dec a1 x); subst; symmetry; auto;
         apply F12_EQ; auto; intro; subst; auto. }
     { apply dslgDisjL; eauto. eapply IHg1_1; eauto. }
@@ -337,7 +360,7 @@ Proof.
     { constructor; eauto.
       { eapply IHg1_1; eauto. }
       { eapply IHg1_2; eauto. } }
-    { apply completeness_condition with fa1.
+    { apply completeness_condition_lev with fa1.
       { intros; apply F12_EQ; intro; subst; auto. }
       { econstructor.
         2: eauto.
@@ -418,7 +441,7 @@ Proof.
               { apply EASE. auto. }
               { apply F12_EQ; auto. } } } } } }
     { rename n into r. rename n0 into n.
-      remember (MiniKanrenSyntax.P r) as d. destruct d as [rel [Hcl Hco]].
+      remember (MiniKanrenSyntax.Prog r) as d. destruct d as [rel [Hcl Hco]].
       red in Hco. destruct (Hco t) as [Hcog Hcof].
       red in Hcl. unfold closed_goal_in_context in Hcl.
       econstructor.
@@ -436,7 +459,7 @@ Lemma den_sem_another_fresh_var
       (a1 a2 : name)
       (A1_FRESH : ~ is_fv_of_goal a1 (Fresh b))
       (A2_FRESH : ~ is_fv_of_goal a2 (Fresh b))
-      (fa1 fa2 : gt_fun)
+      (fa1 fa2 : repr_fun)
       (l : nat)
       (DSG1 : in_denotational_sem_lev_goal l (b a1) fa1)
       (F_SWITCH : gt_eq (fa1 a1) (fa2 a2))
@@ -444,7 +467,7 @@ Lemma den_sem_another_fresh_var
       [| l | b a2 , fa2 |].
 Proof.
   destruct (name_eq_dec a1 a2); subst.
-  { apply completeness_condition with fa1; auto.
+  { apply completeness_condition_lev with fa1; auto.
     intros. destruct (name_eq_dec x a2); subst; auto. }
   { good_inversion CG. red in CB_FG.
     eapply den_sem_rename_var with (g1 := (b a1)) (n := max n (max (S a1) (S a2))); eauto.

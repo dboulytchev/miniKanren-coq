@@ -52,13 +52,13 @@ data Prod a b =
    Pair a b
 
 fst :: (Prod a1 a2) -> a1
-fst p0 =
-  case p0 of {
+fst p =
+  case p of {
    Pair x _ -> x}
 
 snd :: (Prod a1 a2) -> a2
-snd p0 =
-  case p0 of {
+snd p =
+  case p of {
    Pair _ y -> y}
 
 data List a =
@@ -150,8 +150,8 @@ image :: Subst -> Name -> Option Term
 image s n =
   case s of {
    Nil -> None;
-   Cons p0 tl ->
-    case p0 of {
+   Cons p tl ->
+    case p of {
      Pair m t -> case eq_dec m n of {
                   Left -> Some t;
                   Right -> image tl n}}}
@@ -167,7 +167,7 @@ apply_subst s t =
 
 compose :: Subst -> Subst -> Subst
 compose s1 s2 =
-  app (map (\p0 -> Pair (fst p0) (apply_subst s2 (snd p0))) s1) s2
+  app (map (\p -> Pair (fst p) (apply_subst s2 (snd p))) s1) s2
 
 data Unification_step_outcome =
    NonUnifiable
@@ -345,7 +345,7 @@ eval_step_SLD_exists st' =
      Fresh g0 -> ExistT Step (ExistT NoCutting (ExistT (State (Leaf (g0 n) s
       (S n))) (EsFresh g0 s n)));
      Invoke n0 t -> ExistT Step (ExistT NoCutting (ExistT (State (Leaf
-      (proj1_sig (p n0) t) s n)) (EsInvoke n0 t s n)))})
+      (proj1_sig (prog n0) t) s n)) (EsInvoke n0 t s n)))})
     (\c st'1 iHst'1 st'2 _ ->
     case iHst'1 of {
      ExistT l1 s ->
@@ -603,8 +603,8 @@ pred_names =
     (10, "badMax")
   ]
 
-p :: Spec
-p = translate_prog P.$
+prog :: Spec
+prog = translate_prog P.$
   [
     atom "div" [] <= [catom "div" []],
     atom "div" [] <= [],
