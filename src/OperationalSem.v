@@ -1,4 +1,3 @@
-
 Require Import List.
 Require Import Coq.Lists.ListSet.
 Require Import Unify.
@@ -83,7 +82,7 @@ Inductive label : Set :=
 (* Transitions *)
 Inductive eval_step : state' -> label -> state -> Set :=
 | esFail         : forall           s    n, eval_step (Leaf Fail s n) Step Stop
-| esCut          : forall           s    n, eval_step (Leaf Cut s n)  (Answer s n) Stop
+| esCut          : forall           s    n, eval_step (Leaf Cut s n)  (Answer s n) Stop                             (* cuts are ignored in interliving search *)
 | esUnifyFail    : forall t1 t2     s    n  (MGU : mgu (apply_subst s t1) (apply_subst s t2) None),
                                             eval_step (Leaf (Unify t1 t2) s n) Step Stop
 | esUnifySuccess : forall t1 t2     s s' n  (MGU : mgu (apply_subst s t1) (apply_subst s t2) (Some s')),

@@ -7,7 +7,7 @@ Require Import Unify.
 
 Inductive goal : Set :=
 | Fail   : goal
-| Cut    : goal
+| Cut    : goal                     (* for SLD semantics only, in others is treated as 'success' *)
 | Unify  : term -> term -> goal
 | Disj   : goal -> goal -> goal
 | Conj   : goal -> goal -> goal
