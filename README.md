@@ -17,5 +17,5 @@ The folder 'extracted' contains reference interpreters:
 
 - interpreter.hs -- the code extracted from interleaving search semantics (from OperationalSem.v)
 - interpreter_wrapped.hs -- the code from interpreter_wrapped.hs appended with primitives for more convenient use and some tests
-- sld_interpreter.hs -- the code extracted from interleaving search semantics (from OperationalSem.v)
+- sld_interpreter.hs -- the code extracted from SLD search semantics (from OperationalSemSLD.v)
 - sld_interpreter_wrapped.hs -- the code from sld_interpreter_wrapped.hs appended with primitives for more convenient use (including the Prolog to MiniKanren translation) and some tests
