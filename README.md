@@ -1,5 +1,5 @@
 # miniKanren-coq
-A certified semantics for relational programming workout.
+A certified semantics for miniKanren with disequality constraints workout.
 
 The folder 'src' contains the formalization of the system and all the proofs:
 
@@ -10,8 +10,6 @@ The folder 'src' contains the formalization of the system and all the proofs:
 - OperationalSem.v -- operational semantics for the interleaving search
 - OpSemSoundness.v -- soundness of the interleaving search
 - OpSemCompleteness.v -- completeness of the interleaving search
-- OperationalSemSLD.v -- operational semantics for the SLD search (with cuts)
-- OpSemSLDSoundness.v -- soundness of the SLD search (with cuts)
 
 The folder 'extracted' contains reference interpreters:
 

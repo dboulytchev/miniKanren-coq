@@ -1,3 +1,5 @@
+Add LoadPath "~/JB/minikanren-coq/src/".
+
 Require Import List.
 Require Import Coq.Lists.ListSet.
 Import ListNotations.
@@ -9,6 +11,15 @@ Require Import Unify.
 Require Import MiniKanrenSyntaxDiseq.
 Require Import DenotationalSemDiseq.
 Require Import OperationalSemDiseq.
+
+
+Module OperationalSemSoundness (ConstraintStore : ConstraintStoreSig).
+
+Import ConstraintStore.
+
+Module OperationalSem := OperationalSem ConstraintStore.
+
+Import OperationalSem.
 
 Lemma answer_correct
       (s : subst)
@@ -120,3 +131,5 @@ Proof.
     subst. constructor. apply well_formed_initial_state; auto. }
   subst. inversion H. inversion DSST'. auto.
 Qed.
+
+End OperationalSemSoundness.

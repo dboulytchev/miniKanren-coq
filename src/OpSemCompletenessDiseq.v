@@ -1,3 +1,5 @@
+Add LoadPath "~/JB/minikanren-coq/src/".
+
 Require Import List.
 Require Import Coq.Lists.ListSet.
 Require Import Omega.
@@ -8,6 +10,14 @@ Require Import MiniKanrenSyntaxDiseq.
 Require Import OperationalSemDiseq.
 Require Import DenotationalSemDiseq.
 
+
+Module OperationalSemCompleteness (ConstraintStore : ConstraintStoreSig).
+
+Import ConstraintStore.
+
+Module OperationalSem := OperationalSem ConstraintStore.
+
+Import OperationalSem.
 
 Lemma search_completeness_generalized
       (l    : nat)
@@ -157,3 +167,5 @@ Proof.
   intro. destruct H as [f' [HinDA ff'eq]]. exists f'. split; auto.
   intros. apply ff'eq. apply first_nats_less; auto.
 Qed.
+
+End OperationalSemCompleteness.

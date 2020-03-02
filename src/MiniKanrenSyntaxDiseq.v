@@ -1,3 +1,5 @@
+Add LoadPath "~/JB/minikanren-coq/src/".
+
 Require Import List.
 Import ListNotations.
 Require Import Coq.Lists.ListSet.

@@ -1,3 +1,5 @@
+Add LoadPath "~/JB/minikanren-coq/src/".
+
 Require Import List.
 Import ListNotations.
 Require Import Coq.Lists.ListSet.
@@ -10,64 +12,15 @@ Require Import MiniKanrenSyntaxDiseq.
 Require Import Stream.
 Require Import DenotationalSemDiseq.
 
-Parameter constraint_store : subst -> Set.
 
-Parameter init_cs : constraint_store empty_subst.
-
-Parameter add_constraint : forall (s : subst), constraint_store s -> term -> term -> option (constraint_store s) -> Set.
-
-Parameter add_constraint_exists :
-  forall (s : subst) (cs : constraint_store s) (t1 t2 : term),
-    {r : option (constraint_store s) & add_constraint s cs t1 t2 r}.
-
-Parameter add_constraint_unique :
-  forall (s : subst) (cs : constraint_store s) (t1 t2 : term) (r r' : option (constraint_store s)),
-    add_constraint s cs t1 t2 r -> add_constraint s cs t1 t2 r' -> r = r'.
-
-Parameter upd_cs : forall (s : subst), constraint_store s -> forall (d : subst), option (constraint_store (compose s d)) -> Set.
-
-Parameter upd_cs_exists :
-  forall (s : subst) (cs : constraint_store s) (d : subst),
-    {r : option (constraint_store (compose s d)) & upd_cs s cs d r}.
-
-Parameter upd_cs_unique :
-  forall (s : subst) (cs : constraint_store s) (d : subst) (r r' : option (constraint_store (compose s d))),
-    upd_cs s cs d r -> upd_cs s cs d r' -> r = r'.
-
-Parameter in_denotational_sem_cs : forall (s : subst), constraint_store s -> repr_fun -> Prop.
-
-Notation "[| s , cs , f |]" := (in_denotational_sem_cs s cs f) (at level 0).
-
-Parameter init_condition : forall f, [| empty_subst , init_cs , f |].
-
-Parameter add_constraint_fail_condition :
-  forall (s : subst) (cs : constraint_store s) (t1 t2 : term),
-    add_constraint s cs t1 t2 None ->
-    forall f, ~ ([| s , cs  , f |] /\ [ s , f ] /\ (~ gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2))).
-
-Parameter add_constraint_success_condition :
-  forall (s : subst) (cs cs' : constraint_store s) (t1 t2 : term),
-    add_constraint s cs t1 t2 (Some cs') ->
-    forall f, [| s , cs' , f |] /\ [ s , f ] <->
-              [| s , cs  , f |] /\ [ s , f ] /\ (~ gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)).
-
-Parameter upd_cs_fail_condition :
-  forall (s : subst) (cs : constraint_store s) (d : subst),
-    upd_cs s cs d None -> forall f, ~ ([| s , cs , f |] /\ [ compose s d , f ]).
-
-Parameter upd_cs_success_condition :
-  forall (s : subst) (cs : constraint_store s) (d : subst) (cs' : constraint_store (compose s d)),
-    upd_cs s cs d (Some cs') ->
-    forall f, [| compose s d , cs' , f |] /\ [ compose s d , f ] <->
-              [| s           , cs  , f |] /\ [ compose s d , f ].
-
-
-Definition dep_pair_cs_same (s : subst)
-                            (cs : constraint_store s)
-                            (cs' : constraint_store s)
-                            (EQ : existT (fun s : subst => constraint_store s) s cs =
-                                  existT (fun s : subst => constraint_store s) s cs') :
-                            cs = cs'.
+Definition dep_pair_cs_same (A : Set)
+                            (B : A -> Set)
+                            (a : A)
+                            (b : B a)
+                            (b' : B a)
+                            (EQ : existT (fun a : A => B a) a b =
+                                  existT (fun a : A => B a) a b') :
+                            b = b'.
 Proof. inversion_sigma. subst. elim_eq_rect. reflexivity. Qed.
 
 Ltac simpl_existT_cs_same :=
@@ -76,6 +29,66 @@ Ltac simpl_existT_cs_same :=
       [ H : existT _ ?x _ = existT _ ?x _ |- _ ] => apply dep_pair_cs_same in H; subst
     end).
 
+
+Module Type ConstraintStoreSig.
+
+Parameter constraint_store : subst -> Set.
+
+Parameter init_cs : constraint_store empty_subst.
+
+Parameter add_constraint : forall (s : subst), constraint_store s -> term -> term -> option (constraint_store s) -> Set.
+
+Axiom add_constraint_exists :
+  forall (s : subst) (cs : constraint_store s) (t1 t2 : term),
+    {r : option (constraint_store s) & add_constraint s cs t1 t2 r}.
+
+Axiom add_constraint_unique :
+  forall (s : subst) (cs : constraint_store s) (t1 t2 : term) (r r' : option (constraint_store s)),
+    add_constraint s cs t1 t2 r -> add_constraint s cs t1 t2 r' -> r = r'.
+
+Parameter upd_cs : forall (s : subst), constraint_store s -> forall (d : subst), option (constraint_store (compose s d)) -> Set.
+
+Axiom upd_cs_exists :
+  forall (s : subst) (cs : constraint_store s) (d : subst),
+    {r : option (constraint_store (compose s d)) & upd_cs s cs d r}.
+
+Axiom upd_cs_unique :
+  forall (s : subst) (cs : constraint_store s) (d : subst) (r r' : option (constraint_store (compose s d))),
+    upd_cs s cs d r -> upd_cs s cs d r' -> r = r'.
+
+Parameter in_denotational_sem_cs : forall (s : subst), constraint_store s -> repr_fun -> Prop.
+
+Notation "[| s , cs , f |]" := (in_denotational_sem_cs s cs f) (at level 0).
+
+Axiom init_condition : forall f, [| empty_subst , init_cs , f |].
+
+Axiom add_constraint_fail_condition :
+  forall (s : subst) (cs : constraint_store s) (t1 t2 : term),
+    add_constraint s cs t1 t2 None ->
+    forall f, ~ ([| s , cs  , f |] /\ [ s , f ] /\ [| Disunify t1 t2 , f |]).
+
+Axiom add_constraint_success_condition :
+  forall (s : subst) (cs cs' : constraint_store s) (t1 t2 : term),
+    add_constraint s cs t1 t2 (Some cs') ->
+    forall f, [| s , cs' , f |] /\ [ s , f ] <->
+              [| s , cs  , f |] /\ [ s , f ] /\ [| Disunify t1 t2 , f |].
+
+Axiom upd_cs_fail_condition :
+  forall (s : subst) (cs : constraint_store s) (d : subst),
+    upd_cs s cs d None -> forall f, ~ ([| s , cs , f |] /\ [ compose s d , f ]).
+
+Axiom upd_cs_success_condition :
+  forall (s : subst) (cs : constraint_store s) (d : subst) (cs' : constraint_store (compose s d)),
+    upd_cs s cs d (Some cs') ->
+    forall f, [| compose s d , cs' , f |] /\ [ compose s d , f ] <->
+              [| s           , cs  , f |] /\ [ compose s d , f ].
+
+End ConstraintStoreSig.
+
+
+Module OperationalSem (ConstraintStore : ConstraintStoreSig).
+
+Import ConstraintStore.
 
 (* Partial state *) 
 Inductive state' : Set :=
@@ -357,15 +370,15 @@ Proof.
     rewrite <- and_assoc. rewrite <- and_assoc.
     apply AND_IFF_SPLIT.
     { rewrite and_comm. rewrite DS_LT_COUNTER. apply and_comm. }
-    { apply not_iff_compat. split; intros.
+    { split; intros DSG; good_inversion DSG; constructor; intro C; apply DISUNI.
       { etransitivity. etransitivity.
-        2: apply H.
-        { apply apply_repr_fun_fv. intros. symmetry. apply REQ_ff'. auto. }
-        { apply apply_repr_fun_fv. intros. apply REQ_ff'. auto. } }
-      { etransitivity. etransitivity.
-        2: apply H.
+        2: apply C.
         { apply apply_repr_fun_fv. intros. apply REQ_ff'. auto. }
-        { apply apply_repr_fun_fv. intros. symmetry. apply REQ_ff'. auto. } } } }
+        { apply apply_repr_fun_fv. intros. symmetry. apply REQ_ff'. auto. } }
+      { etransitivity. etransitivity.
+        2: apply C.
+        { apply apply_repr_fun_fv. intros. symmetry. apply REQ_ff'. auto. }
+        { apply apply_repr_fun_fv. intros. apply REQ_ff'. auto. } } } }
 Qed.
 
 Lemma well_formedness_preservation
@@ -704,3 +717,5 @@ Proof.
       intro interH. eapply interleave_in in interH.
       eapply interH. right. eapply IHIN_1; eauto. } }
 Qed.
+
+End OperationalSem.
