@@ -1,3 +1,5 @@
+Add LoadPath "~/JB/minikanren-coq/src/".
+
 Require Import List.
 Import ListNotations.
 Require Import Coq.Lists.ListSet.
@@ -6,13 +8,14 @@ Require Import Omega.
 Require Import Unify.
 
 Inductive goal : Set :=
-| Fail   : goal
-| Cut    : goal                     (* for SLD semantics only, in others is treated as 'success' *)
-| Unify  : term -> term -> goal
-| Disj   : goal -> goal -> goal
-| Conj   : goal -> goal -> goal
-| Fresh  : (name -> goal) -> goal
-| Invoke : name -> term -> goal.
+| Fail     : goal
+| Cut      : goal                     (* for SLD semantics only, in others is treated as 'success' *)
+| Unify    : term -> term -> goal
+| Disunify : term -> term -> goal
+| Disj     : goal -> goal -> goal
+| Conj     : goal -> goal -> goal
+| Fresh    : (name -> goal) -> goal
+| Invoke   : name -> term -> goal.
 
 (* rel is a body of a relational symbol *)
 Definition rel : Set := term -> goal.
@@ -22,6 +25,10 @@ Inductive is_fv_of_goal (n : name) : goal -> Prop :=
                           is_fv_of_goal n (Unify t1 t2)
 | fvUnifyR : forall t1 t2 (IN_FV : In n (fv_term t2)),
                           is_fv_of_goal n (Unify t1 t2)
+| fvDisunifyL : forall t1 t2 (IN_FV : In n (fv_term t1)),
+                             is_fv_of_goal n (Disunify t1 t2)
+| fvDisunifyR : forall t1 t2 (IN_FV : In n (fv_term t2)),
+                             is_fv_of_goal n (Disunify t1 t2)
 | fvDisjL  : forall g1 g2 (IS_FV : is_fv_of_goal n g1),
                           is_fv_of_goal n (Disj g1 g2)
 | fvDisjR  : forall g1 g2 (IS_FV : is_fv_of_goal n g2),
@@ -101,6 +108,9 @@ Inductive renaming (old_x : name) (new_x : name) : goal -> goal -> Prop :=
 | rUnify : forall t1 t2, renaming old_x new_x (Unify t1 t2)
                                               (Unify (apply_subst [(old_x, Var new_x)] t1)
                                                      (apply_subst [(old_x, Var new_x)] t2))
+| rDisunify : forall t1 t2, renaming old_x new_x (Disunify t1 t2)
+                                                 (Disunify (apply_subst [(old_x, Var new_x)] t1)
+                                                           (apply_subst [(old_x, Var new_x)] t2))
 | rDisj : forall g1 g2 rg1 rg2 (R_G1 : renaming old_x new_x g1 rg1)
                                (R_G2 : renaming old_x new_x g2 rg2),
                                renaming old_x new_x (Disj g1 g2) (Disj rg1 rg2)
@@ -125,6 +135,7 @@ Inductive consistent_goal : goal -> Prop :=
 | cgFail   : consistent_goal Fail
 | cgCut    : consistent_goal Cut
 | cgUnify  : forall t1 t2, consistent_goal (Unify t1 t2)
+| cgDisunify  : forall t1 t2, consistent_goal (Disunify t1 t2)
 | cgDisj   : forall g1 g2 (CG_G1 : consistent_goal g1)
                           (CG_G2 : consistent_goal g2),
                           consistent_goal (Disj g1 g2)

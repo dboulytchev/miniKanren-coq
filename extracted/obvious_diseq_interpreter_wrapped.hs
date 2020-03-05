@@ -1,4 +1,4 @@
-module Interpreter_obvious_diseq where
+module Obvious_diseq_interpreter where
 
 import qualified Prelude as P
 import qualified Data.Maybe
