@@ -7,17 +7,16 @@ Require Export Coq.Structures.OrderedTypeEx.
 
 Ltac good_inversion H := inversion H; clear H; subst.
 
-(************************* Terms *************************)
-(* Name of entities *)
+
+(************************* Terms **************************)
 Definition name := nat.
 
 Definition name_eq_dec : (forall x y : name, {x = y} + {x <> y}) := eq_nat_dec.
 
-(* Term type *) 
 Inductive term : Set :=
-(* a variable           *) | Var : name -> term
-(* a constant           *) | Cst : name -> term
-(* a binary constructor *) | Con : name -> term -> term -> term.
+| Var : name -> term
+| Cst : name -> term
+| Con : name -> term -> term -> term.
 
 Lemma term_eq_dec : forall t1 t2 : term, {t1 = t2} + {t1 <> t2}.
 Proof.
@@ -120,8 +119,9 @@ Proof.
       { right. apply IHt2. assumption. } } }
 Qed.
 
-(******************** Substitutions **********************)
-(* Substitution *)
+
+
+(********************* Substitutions **********************)
 Definition subst : Set := list (name * term).
 
 Definition empty_subst : subst := [].
@@ -153,7 +153,6 @@ Definition in_subst_dom (s : subst) (x : name) : Prop := exists t, image s x = S
 
 Definition in_subst_vran (s : subst) (y : name) : Prop := exists x t, image s x = Some t /\ In y (fv_term t).
 
-(* Substitution application *)
 Fixpoint apply_subst (s : subst) (t : term) : term :=
   match t with
   | Cst _     => t
@@ -189,7 +188,6 @@ Proof.
       { right. auto. } } }
 Qed.
 
-(* Substitution composition *)
 Definition compose (s1 s2 : subst) : subst :=
   List.map (fun p => (fst p, apply_subst s2 (snd p))) s1 ++ s2.
 
@@ -248,11 +246,12 @@ Proof.
   { right. auto. }
 Qed.
 
-(* Generality *)
+
+
+(************************** MGU ***************************)
 Definition more_general (m s : subst) : Prop :=
   exists (s' : subst), forall (t : term), apply_subst s t = apply_subst s' (apply_subst m t).
 
-(* Unification property *)
 Definition unifier (s : subst) (t1 t2 : term) : Prop := apply_subst s t1 = apply_subst s t2.
 
 Inductive unification_step_outcome : Set :=
@@ -274,7 +273,6 @@ Proof.
     { inversion CR. reflexivity. } }
 Qed.
 
-(* Find a difference in a couple of terms and try to make a unification step *)
 Fixpoint unification_step (t1 t2 : term) : unification_step_outcome :=
   match (t1, t2) with
   | (Cst n1      , Cst n2      ) => if eq_nat_dec n1 n2 then Same else NonUnifiable 
@@ -489,8 +487,6 @@ Definition fvOrder (t : terms) := length (var_set_union (fv_term (fst t)) (fv_te
 
 Definition fvOrderRel (t p : terms) := fvOrder t < fvOrder p.
 
-(* Hint Constructors Acc. *)
-
 Theorem fvOrder_wf : well_founded fvOrderRel.
 Proof.
   assert (fvOrder_wf': forall (size: nat) (t: terms), fvOrder t < size -> Acc fvOrderRel t).
@@ -500,7 +496,7 @@ Proof.
   red; intro; eapply fvOrder_wf'; eauto.
 Defined.
 
-Inductive mgu : term -> term -> option subst -> Set :=
+Inductive mgu : term -> term -> option subst -> Prop :=
 | mguNonUnifiable : forall t1 t2 (STEP_NU : unification_step t1 t2 = NonUnifiable),
                                  mgu t1 t2 None
 | mguSame :         forall t1 t2 (STEP_SAME : unification_step t1 t2 = Same),
@@ -545,7 +541,7 @@ Qed.
 
 
 
-Lemma mgu_exists
+Lemma mgu_result_exists
       (t1 t2 : term) :
       {r & mgu t1 t2 r}.
 Proof.
@@ -569,9 +565,9 @@ Proof.
           { eassumption. }
           { eassumption. } } } } }
   subst. assumption.
-Qed.
+Defined.
 
-Lemma mgu_unique
+Lemma mgu_result_unique
       (t1 t2 : term)
       (r r' : option subst)
       (UNI_1 : mgu t1 t2 r)

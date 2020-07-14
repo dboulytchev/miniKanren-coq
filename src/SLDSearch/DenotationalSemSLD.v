@@ -1,9 +1,10 @@
 Require Import List.
 Require Import Coq.Lists.ListSet.
 Import ListNotations.
-Require Import Unify.
-Require Import MiniKanrenSyntaxDiseq.
 Require Import Omega.
+
+Require Import Unification.
+Require Import LanguageSLD.
 
 Lemma set_empty_union
       (s1 s2 : var_set)
@@ -21,6 +22,9 @@ Proof.
     inversion H. }
 Qed.
 
+
+
+(* repr funs *)
 Definition repr_fun : Set := name -> ground_term.
 
 Definition gt_eq (gt1 : ground_term) (gt2 : ground_term) : Prop :=
@@ -188,6 +192,108 @@ Proof.
   rewrite repr_fun_apply_compose. rewrite repr_fun_apply_compose. auto.
 Qed.
 
+
+
+(* denotational semantics of goals *)
+Reserved Notation "[| g , f |]" (at level 0).
+
+Inductive in_denotational_sem_goal : goal -> repr_fun -> Prop :=
+| dsgCut    : forall f,  [| Cut , f |]
+| dsgUnify  : forall f t1 t2 (UNI : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
+                             [| Unify t1 t2 , f |]
+| dsgDisjL  : forall f g1 g2 (DSG : in_denotational_sem_goal g1 f),
+                             [| Disj g1 g2 , f |]
+| dsgDisjR  : forall f g1 g2 (DSG : in_denotational_sem_goal g2 f),
+                             [| Disj g1 g2 , f |]
+| dsgConj   : forall f g1 g2 (DSG_L : [| g1 , f |])
+                             (DSG_R : [| g2 , f |]),
+                             [| Conj g1 g2 , f |]
+| dsgFresh  : forall f fn a fg (A_NOT_FV : ~ is_fv_of_goal a (Fresh fg))
+                               (DSG : [| fg a , fn |])
+                               (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
+                               [| Fresh fg , f |]
+| dsgInvoke : forall r t f (DSG : [| proj1_sig (LanguageSLD.Prog r) t , f |]),
+                              [| Invoke r t, f |]
+where "[| g , f |]" := (in_denotational_sem_goal g f).
+
+Hint Constructors in_denotational_sem_goal : core.
+
+Reserved Notation "[| n | g , f |]" (at level 0).
+
+Inductive in_denotational_sem_lev_goal : nat -> goal -> repr_fun -> Prop :=
+| dslgCut    : forall l f, [| (S l) | Cut , f |]
+| dslgUnify  : forall l f t1 t2 (UNI : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
+                                [| S l | Unify t1 t2 , f |]
+| dslgDisjL  : forall l f g1 g2 (DSG : [| l | g1 , f |]),
+                                [| l | Disj g1 g2 , f |]
+| dslgDisjR  : forall l f g1 g2 (DSG : [| l | g2 , f |]),
+                                [| l | Disj g1 g2 , f |]
+| dslgConj   : forall l f g1 g2 (DSG_L : [| l | g1 , f |])
+                                (DSG_R : [| l | g2 , f |]),
+                                [| l | Conj g1 g2 , f |]
+| dslgFresh  : forall l f fn a fg (A_NOT_FV : ~ is_fv_of_goal a (Fresh fg))
+                                  (DSG : [| l | (fg a) , fn |])
+                                  (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
+                                  in_denotational_sem_lev_goal l (Fresh fg) f
+| dslgInvoke : forall l r t f (DSG : [| l | (proj1_sig (LanguageSLD.Prog r) t) , f |]),
+                              [| S l | Invoke r t , f |]
+where "[| n | g , f |]" := (in_denotational_sem_lev_goal n g f).
+
+Hint Constructors in_denotational_sem_lev_goal : core.
+
+Lemma in_denotational_sem_zero_lev
+      (g : goal)
+      (f : repr_fun) :
+      ~ [| 0 | g , f |].
+Proof.
+  intro. remember 0 as l. induction H; inversion Heql; auto.
+Qed.
+
+Lemma in_denotational_sem_lev_monotone
+      (l : nat)
+      (g : goal)
+      (f : repr_fun)
+      (DSG : [| l | g , f |])
+      (l' : nat)
+      (LE: l <= l') :
+      [| l' | g , f |].
+Proof.
+  revert LE. revert l'. induction DSG; eauto.
+  1-2: intros; destruct l'; auto; inversion LE.
+  { intros. destruct l'.
+    { inversion LE. }
+    { apply le_S_n in LE. auto. } }
+Qed.
+
+Lemma in_denotational_sem_some_lev
+      (g : goal)
+      (f : repr_fun)
+      (DSG : [| g , f |]) :
+      exists l, [| l | g , f |].
+Proof.
+  induction DSG.
+  1-2: exists 1; auto.
+  1-2, 4-5: destruct IHDSG; eauto.
+  { destruct IHDSG1. destruct IHDSG2.
+    exists (max x x0). constructor.
+    { eapply in_denotational_sem_lev_monotone; eauto. apply PeanoNat.Nat.le_max_l. }
+    { eapply in_denotational_sem_lev_monotone; eauto. apply PeanoNat.Nat.le_max_r. } }
+Qed.
+
+Lemma in_denotational_sem_drop_lev
+      (g : goal)
+      (f : repr_fun)
+      (l : nat)
+      (DSLG : [| l | g , f |]) :
+      [| g , f |].
+Proof.
+  induction DSLG; eauto.
+Qed.
+
+
+
+(* denotational analog *)
+
 Definition in_denotational_sem_subst (s : subst) (f : repr_fun) : Prop :=
   exists (f' : repr_fun), repr_fun_eq (subst_repr_fun_compose s f') f.
 
@@ -291,107 +397,9 @@ Proof.
 Qed.
 
 
-Reserved Notation "[| g , f |]" (at level 0).
 
-Inductive in_denotational_sem_goal : goal -> repr_fun -> Prop :=
-| dsgCut    : forall f,  [| Cut , f |]
-| dsgUnify  : forall f t1 t2 (UNI : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
-                             [| Unify t1 t2 , f |]
-| dsgDisunify  : forall f t1 t2 (DISUNI : ~ gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
-                             [| Disunify t1 t2 , f |]
-| dsgDisjL  : forall f g1 g2 (DSG : in_denotational_sem_goal g1 f),
-                             [| Disj g1 g2 , f |]
-| dsgDisjR  : forall f g1 g2 (DSG : in_denotational_sem_goal g2 f),
-                             [| Disj g1 g2 , f |]
-| dsgConj   : forall f g1 g2 (DSG_L : [| g1 , f |])
-                             (DSG_R : [| g2 , f |]),
-                             [| Conj g1 g2 , f |]
-| dsgFresh  : forall f fn a fg (A_NOT_FV : ~ is_fv_of_goal a (Fresh fg))
-                               (DSG : [| fg a , fn |])
-                               (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
-                               [| Fresh fg , f |]
-| dsgInvoke : forall r t f (DSG : [| proj1_sig (MiniKanrenSyntaxDiseq.Prog r) t , f |]),
-                              [| Invoke r t, f |]
-where "[| g , f |]" := (in_denotational_sem_goal g f).
-
-Hint Constructors in_denotational_sem_goal.
-
-Reserved Notation "[| n | g , f |]" (at level 0).
-
-Inductive in_denotational_sem_lev_goal : nat -> goal -> repr_fun -> Prop :=
-| dslgCut    : forall l f, [| (S l) | Cut , f |]
-| dslgUnify  : forall l f t1 t2 (UNI : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
-                                [| S l | Unify t1 t2 , f |]
-| dslgDisunify  : forall l f t1 t2 (DISUNI : ~ gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
-                                [| S l | Disunify t1 t2 , f |]
-| dslgDisjL  : forall l f g1 g2 (DSG : [| l | g1 , f |]),
-                                [| l | Disj g1 g2 , f |]
-| dslgDisjR  : forall l f g1 g2 (DSG : [| l | g2 , f |]),
-                                [| l | Disj g1 g2 , f |]
-| dslgConj   : forall l f g1 g2 (DSG_L : [| l | g1 , f |])
-                                (DSG_R : [| l | g2 , f |]),
-                                [| l | Conj g1 g2 , f |]
-| dslgFresh  : forall l f fn a fg (A_NOT_FV : ~ is_fv_of_goal a (Fresh fg))
-                                  (DSG : [| l | (fg a) , fn |])
-                                  (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
-                                  in_denotational_sem_lev_goal l (Fresh fg) f
-| dslgInvoke : forall l r t f (DSG : [| l | (proj1_sig (MiniKanrenSyntaxDiseq.Prog r) t) , f |]),
-                              [| S l | Invoke r t , f |]
-where "[| n | g , f |]" := (in_denotational_sem_lev_goal n g f).
-
-Hint Constructors in_denotational_sem_lev_goal.
-
-Lemma in_denotational_sem_zero_lev
-      (g : goal)
-      (f : repr_fun) :
-      ~ [| 0 | g , f |].
-Proof.
-  intro. remember 0 as l. induction H; inversion Heql; auto.
-Qed.
-
-Lemma in_denotational_sem_lev_monotone
-      (l : nat)
-      (g : goal)
-      (f : repr_fun)
-      (DSG : [| l | g , f |])
-      (l' : nat)
-      (LE: l <= l') :
-      [| l' | g , f |].
-Proof.
-  revert LE. revert l'. induction DSG; eauto.
-  1-3: intros; destruct l'; auto; inversion LE.
-  { intros. destruct l'.
-    { inversion LE. }
-    { apply le_S_n in LE. auto. } }
-Qed.
-
-Lemma in_denotational_sem_some_lev
-      (g : goal)
-      (f : repr_fun)
-      (DSG : [| g , f |]) :
-      exists l, [| l | g , f |].
-Proof.
-  induction DSG.
-  1-3: exists 1; auto.
-  1-2, 4-5: destruct IHDSG; eauto.
-  { destruct IHDSG1. destruct IHDSG2.
-    exists (max x x0). constructor.
-    { eapply in_denotational_sem_lev_monotone; eauto. apply PeanoNat.Nat.le_max_l. }
-    { eapply in_denotational_sem_lev_monotone; eauto. apply PeanoNat.Nat.le_max_r. } }
-Qed.
-
-Lemma in_denotational_sem_drop_lev
-      (g : goal)
-      (f : repr_fun)
-      (l : nat)
-      (DSLG : [| l | g , f |]) :
-      [| g , f |].
-Proof.
-  induction DSLG; eauto.
-Qed.
-
-
-Lemma completeness_condition_lev
+(* den sem properties *)
+Lemma closedness_condition_lev
       (f f' : repr_fun)
       (g : goal)
       (l : nat)
@@ -406,12 +414,6 @@ Proof.
     assert (gt_eq (apply_repr_fun f t2) (apply_repr_fun f' t2)).
     { apply apply_repr_fun_fv. auto. }
     revert UNI H H0. unfold gt_eq. intros. congruence. }
-  { constructor. intros C. apply DISUNI.
-    assert (gt_eq (apply_repr_fun f t1) (apply_repr_fun f' t1)).
-    { apply apply_repr_fun_fv. auto. }
-    assert (gt_eq (apply_repr_fun f t2) (apply_repr_fun f' t2)).
-    { apply apply_repr_fun_fv. auto. }
-    revert C H H0. unfold gt_eq. intros. congruence. }
   { constructor. apply IHDSG. intros.
     apply FF'_EQ. auto. }
   { apply dslgDisjR. apply IHDSG. intros.
@@ -433,11 +435,11 @@ Proof.
       reflexivity. } }
   { constructor. apply IHDSG. intros.
     apply FF'_EQ. constructor.
-    remember (MiniKanrenSyntaxDiseq.Prog r). destruct d as [rel [Hcl Hco]].
+    remember (LanguageSLD.Prog r). destruct d as [rel [Hcl Hco]].
     simpl in H. red in Hcl. red in Hcl. auto. }
 Qed.
 
-Lemma completeness_condition
+Lemma closedness_condition
       (f f' : repr_fun)
       (g : goal)
       (FF'_EQ : forall x, is_fv_of_goal x g -> gt_eq (f x) (f' x))
@@ -447,7 +449,7 @@ Proof.
   apply in_denotational_sem_some_lev in DSG.
   destruct DSG as [l DSLG].
   eapply in_denotational_sem_drop_lev.
-  eapply completeness_condition_lev; eauto.
+  eapply closedness_condition_lev; eauto.
 Qed.
 
 Lemma den_sem_rename_var
@@ -483,22 +485,12 @@ Proof.
       all: apply apply_repr_fun_fv; intros; unfold subst_repr_fun_compose;
         simpl; destruct (Nat.eq_dec a1 x); subst; symmetry; auto;
         apply F12_EQ; auto; intro; subst; auto. }
-    { constructor. intros UNI. apply DISUNI.
-      etransitivity.
-      2: etransitivity.
-      2: apply UNI.
-      1-2: etransitivity.
-      1, 3: symmetry.
-      2, 3: apply repr_fun_apply_compose.
-      all: apply apply_repr_fun_fv; intros; unfold subst_repr_fun_compose;
-        simpl; destruct (Nat.eq_dec a1 x); subst; symmetry; auto;
-        apply F12_EQ; auto; intro; subst; auto. }
     { apply dslgDisjL; eauto. eapply IHg1_1; eauto. }
     { apply dslgDisjR; eauto. eapply IHg1_2; eauto. }
     { constructor; eauto.
       { eapply IHg1_1; eauto. }
       { eapply IHg1_2; eauto. } }
-    { apply completeness_condition_lev with fa1.
+    { apply closedness_condition_lev with fa1.
       { intros; apply F12_EQ; intro; subst; auto. }
       { econstructor.
         2: eauto.
@@ -579,7 +571,7 @@ Proof.
               { apply EASE. auto. }
               { apply F12_EQ; auto. } } } } } }
     { rename n into r. rename n0 into n.
-      remember (MiniKanrenSyntaxDiseq.Prog r) as d. destruct d as [rel [Hcl Hco]].
+      remember (LanguageSLD.Prog r) as d. destruct d as [rel [Hcl Hco]].
       red in Hco. destruct (Hco t) as [Hcog Hcof].
       red in Hcl. unfold closed_goal_in_context in Hcl.
       econstructor.
@@ -605,7 +597,7 @@ Lemma den_sem_another_fresh_var
       [| l | b a2 , fa2 |].
 Proof.
   destruct (name_eq_dec a1 a2); subst.
-  { apply completeness_condition_lev with fa1; auto.
+  { apply closedness_condition_lev with fa1; auto.
     intros. destruct (name_eq_dec x a2); subst; auto. }
   { good_inversion CG. red in CB_FG.
     eapply den_sem_rename_var with (g1 := (b a1)) (n := max n (max (S a1) (S a2))); eauto.

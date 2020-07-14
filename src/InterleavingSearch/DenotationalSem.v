@@ -1,11 +1,30 @@
 Require Import List.
 Require Import Coq.Lists.ListSet.
 Import ListNotations.
-Require Import Stream.
-Require Import Unify.
-Require Import MiniKanrenSyntax.
+
+Require Import Unification.
+Require Import Language.
 Require Import Omega.
 
+Lemma set_empty_union
+      (s1 s2 : var_set)
+      (EQ : var_set_union s1 s2 = var_set_empty) :
+      s1 = var_set_empty /\ s2 = var_set_empty.
+Proof.
+  split.
+  { destruct s1; auto.
+    assert (In n var_set_empty).
+    { rewrite <- EQ. apply set_union_intro. left. constructor. auto. }
+    inversion H. }
+  { destruct s2; auto.
+    assert (In n var_set_empty).
+    { rewrite <- EQ. apply set_union_intro. right. constructor. auto. }
+    inversion H. }
+Qed.
+
+
+
+(* repr funs *)
 Definition repr_fun : Set := name -> ground_term.
 
 Definition gt_eq (gt1 : ground_term) (gt2 : ground_term) : Prop :=
@@ -173,10 +192,12 @@ Proof.
   rewrite repr_fun_apply_compose. rewrite repr_fun_apply_compose. auto.
 Qed.
 
+
+
+(* denotational semantics of goals *)
 Reserved Notation "[| g , f |]" (at level 0).
 
 Inductive in_denotational_sem_goal : goal -> repr_fun -> Prop :=
-| dsgCut    : forall f,  [| Cut , f |]
 | dsgUnify  : forall f t1 t2 (UNI : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
                              [| Unify t1 t2 , f |]
 | dsgDisjL  : forall f g1 g2 (DSG : in_denotational_sem_goal g1 f),
@@ -190,16 +211,15 @@ Inductive in_denotational_sem_goal : goal -> repr_fun -> Prop :=
                                (DSG : [| fg a , fn |])
                                (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
                                [| Fresh fg , f |]
-| dsgInvoke : forall r t f (DSG : [| proj1_sig (MiniKanrenSyntax.Prog r) t , f |]),
+| dsgInvoke : forall r t f (DSG : [| proj1_sig (Language.Prog r) t , f |]),
                               [| Invoke r t, f |]
 where "[| g , f |]" := (in_denotational_sem_goal g f).
 
-Hint Constructors in_denotational_sem_goal.
+Hint Constructors in_denotational_sem_goal : core.
 
 Reserved Notation "[| n | g , f |]" (at level 0).
 
 Inductive in_denotational_sem_lev_goal : nat -> goal -> repr_fun -> Prop :=
-| dslgCut    : forall l f, [| (S l) | Cut , f |]
 | dslgUnify  : forall l f t1 t2 (UNI : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)),
                                 [| S l | Unify t1 t2 , f |]
 | dslgDisjL  : forall l f g1 g2 (DSG : [| l | g1 , f |]),
@@ -213,11 +233,11 @@ Inductive in_denotational_sem_lev_goal : nat -> goal -> repr_fun -> Prop :=
                                   (DSG : [| l | (fg a) , fn |])
                                   (EASE : forall (x : name) (neq : x <> a), gt_eq (fn x) (f x)),
                                   in_denotational_sem_lev_goal l (Fresh fg) f
-| dslgInvoke : forall l r t f (DSG : [| l | (proj1_sig (MiniKanrenSyntax.Prog r) t) , f |]),
+| dslgInvoke : forall l r t f (DSG : [| l | (proj1_sig (Language.Prog r) t) , f |]),
                               [| S l | Invoke r t , f |]
 where "[| n | g , f |]" := (in_denotational_sem_lev_goal n g f).
 
-Hint Constructors in_denotational_sem_lev_goal.
+Hint Constructors in_denotational_sem_lev_goal : core.
 
 Lemma in_denotational_sem_zero_lev
       (g : goal)
@@ -233,11 +253,11 @@ Lemma in_denotational_sem_lev_monotone
       (f : repr_fun)
       (DSG : [| l | g , f |])
       (l' : nat)
-      (LE: l <= l')
-      : [| l' | g , f |].
+      (LE: l <= l') :
+      [| l' | g , f |].
 Proof.
   revert LE. revert l'. induction DSG; eauto.
-  1-2: intros; destruct l'; auto; inversion LE.
+  { intros; destruct l'; auto; inversion LE. }
   { intros. destruct l'.
     { inversion LE. }
     { apply le_S_n in LE. auto. } }
@@ -250,7 +270,7 @@ Lemma in_denotational_sem_some_lev
       exists l, [| l | g , f |].
 Proof.
   induction DSG.
-  1-2: exists 1; auto.
+  1: exists 1; auto.
   1-2, 4-5: destruct IHDSG; eauto.
   { destruct IHDSG1. destruct IHDSG2.
     exists (max x x0). constructor.
@@ -269,7 +289,115 @@ Proof.
 Qed.
 
 
-Lemma completeness_condition_lev
+
+(* denotational analog *)
+
+Definition in_denotational_sem_subst (s : subst) (f : repr_fun) : Prop :=
+  exists (f' : repr_fun), repr_fun_eq (subst_repr_fun_compose s f') f.
+
+Notation "[ s , f ]" := (in_denotational_sem_subst s f) (at level 0).
+
+Lemma empty_subst_ds
+      (f : repr_fun) :
+      [ empty_subst , f ].
+Proof.
+  red. exists f. red. intros.
+  unfold subst_repr_fun_compose. rewrite apply_empty. reflexivity.
+Qed.
+
+Lemma unfier_from_gt_unifier
+      (t1 t2 : term)
+      (f : repr_fun)
+      (F_UNIFIES : gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2)) :
+      exists s, unifier s t1 t2 /\ [ s , f ].
+Proof.
+  remember (map (fun x => (x, proj1_sig (f x))) (var_set_union (fv_term t1) (fv_term t2))) as s.
+  exists s. split.
+  { red. red in F_UNIFIES.
+    assert (apply_subst s t1 = proj1_sig (apply_repr_fun f t1)).
+    { clear F_UNIFIES.
+      assert (forall x, In x (fv_term t1) -> image s x = Some (proj1_sig (f x))).
+      { intros. assert (In x (var_set_union (fv_term t1) (fv_term t2))).
+        { apply set_union_intro1. auto. }
+        remember (var_set_union (fv_term t1) (fv_term t2)).
+        subst. apply map_image. auto. }
+      apply subst_of_gt. auto. }
+    assert (apply_subst s t2 = proj1_sig (apply_repr_fun f t2)).
+    { clear F_UNIFIES.
+      assert (forall x, In x (fv_term t2) -> image s x = Some (proj1_sig (f x))).
+      { intros. assert (In x (var_set_union (fv_term t1) (fv_term t2))).
+        { apply set_union_intro2. auto. }
+        remember (var_set_union (fv_term t1) (fv_term t2)).
+        subst. apply map_image. auto. }
+      apply subst_of_gt. auto. }
+    congruence. }
+  { red. exists f. red. intros x. unfold subst_repr_fun_compose.
+    unfold apply_subst. destruct (image s x) eqn:eq.
+    { destruct (f x) eqn:eqfx.
+      assert (x0 = t).
+      { unfold image in eq.
+        remember (var_set_union (fv_term t1) (fv_term t2)). clear Heqv.
+        revert Heqs. revert v.
+        induction s.
+        { inversion eq. }
+        { intros. destruct a as [y t0]. destruct v; good_inversion Heqs.
+          destruct (Nat.eq_dec n x).
+          { good_inversion eq. rewrite eqfx. auto. }
+          { apply IHs with v; auto. } } }
+      subst. red. simpl. clear eqfx. clear eq. induction t.
+      { inversion e. }
+      { auto. }
+      { simpl in e. apply set_empty_union in e. destruct e.
+        apply IHt1 in H. apply IHt2 in H0. simpl.
+        destruct (apply_repr_fun f t3). simpl in H.
+        destruct (apply_repr_fun f t4). simpl in H0.
+        simpl. subst. auto. } }
+    { red. auto. } }
+Qed.
+
+Lemma denotational_sem_uni
+      (s d : subst)
+      (t1 t2 : term)
+      (MGU : mgu (apply_subst s t1) (apply_subst s t2) (Some d))
+      (f : repr_fun) :
+      [ compose s d , f ] <-> [ s , f ] /\ gt_eq (apply_repr_fun f t1) (apply_repr_fun f t2).
+Proof.
+   split.
+   { intros DSS. red in DSS. destruct DSS as [f' ff'_eq]. split.
+      { red. exists (subst_repr_fun_compose d f').
+        eapply repr_fun_eq_trans; eauto.
+        red. symmetry. apply subst_repr_fun_compose_assoc_subst. }
+      { red.
+        specialize (repr_fun_eq_apply _ _ t1 ff'_eq). intro. rewrite <- H.
+        specialize (repr_fun_eq_apply _ _ t2 ff'_eq). intro. rewrite <- H0.
+        rewrite repr_fun_apply_compose. rewrite repr_fun_apply_compose.
+        rewrite compose_correctness. rewrite compose_correctness.
+        apply mgu_unifies in MGU. rewrite MGU. reflexivity. } }
+    { intros [DSS F_UNIFIES]. destruct DSS as [fs COMP_s_fs].
+      assert (FS_UNIFIES : gt_eq (apply_repr_fun fs (apply_subst s t1))
+                                 (apply_repr_fun fs (apply_subst s t2))).
+      { red. rewrite <- repr_fun_apply_compose. rewrite <- repr_fun_apply_compose.
+        apply eq_trans with (proj1_sig (apply_repr_fun f t1)).
+        { apply repr_fun_eq_apply. auto. }
+        { apply eq_trans with (proj1_sig (apply_repr_fun f t2)); auto.
+          symmetry. apply repr_fun_eq_apply. auto. } }
+      apply unfier_from_gt_unifier in FS_UNIFIES.
+      destruct FS_UNIFIES as [u [UNI DSSu]].
+      specialize (mgu_most_general _ _ _ u MGU UNI). intro MG_d.
+      red in MG_d. destruct MG_d as [ds COMP_u_ds]. destruct DSSu as [fu COMP_u_fu].
+      red. exists (subst_repr_fun_compose ds fu).
+      eapply repr_fun_eq_trans. 2: eauto.
+      eapply repr_fun_eq_trans. eapply subst_repr_fun_compose_assoc_subst.
+      eapply repr_fun_eq_trans. 2: eapply repr_fun_eq_compose; eauto.
+      apply repr_fun_eq_compose.
+      eapply repr_fun_eq_trans. red; symmetry; eapply subst_repr_fun_compose_assoc_subst.
+      apply repr_fun_compose_eq. intros. rewrite COMP_u_ds. apply compose_correctness. }
+Qed.
+
+
+
+(* den sem properties *)
+Lemma closedness_condition_lev
       (f f' : repr_fun)
       (g : goal)
       (l : nat)
@@ -278,7 +406,6 @@ Lemma completeness_condition_lev
       [| l | g , f' |].
 Proof.
   revert FF'_EQ. revert f'. induction DSG; intros.
-  { constructor. }
   { constructor. assert (gt_eq (apply_repr_fun f t1) (apply_repr_fun f' t1)).
     { apply apply_repr_fun_fv. auto. }
     assert (gt_eq (apply_repr_fun f t2) (apply_repr_fun f' t2)).
@@ -305,11 +432,11 @@ Proof.
       reflexivity. } }
   { constructor. apply IHDSG. intros.
     apply FF'_EQ. constructor.
-    remember (MiniKanrenSyntax.Prog r). destruct d as [rel [Hcl Hco]].
+    remember (Language.Prog r). destruct d as [rel [Hcl Hco]].
     simpl in H. red in Hcl. red in Hcl. auto. }
 Qed.
 
-Lemma completeness_condition
+Lemma closedness_condition
       (f f' : repr_fun)
       (g : goal)
       (FF'_EQ : forall x, is_fv_of_goal x g -> gt_eq (f x) (f' x))
@@ -319,7 +446,7 @@ Proof.
   apply in_denotational_sem_some_lev in DSG.
   destruct DSG as [l DSLG].
   eapply in_denotational_sem_drop_lev.
-  eapply completeness_condition_lev; eauto.
+  eapply closedness_condition_lev; eauto.
 Qed.
 
 Lemma den_sem_rename_var
@@ -344,7 +471,6 @@ Proof.
   induction l.
   { intros. apply in_denotational_sem_zero_lev in DSG1. contradiction. }
   { induction g1; intros; good_inversion DSG1; good_inversion REN; good_inversion CG.
-    { constructor. }
     { constructor.
       etransitivity.
       2: etransitivity.
@@ -360,7 +486,7 @@ Proof.
     { constructor; eauto.
       { eapply IHg1_1; eauto. }
       { eapply IHg1_2; eauto. } }
-    { apply completeness_condition_lev with fa1.
+    { apply closedness_condition_lev with fa1.
       { intros; apply F12_EQ; intro; subst; auto. }
       { econstructor.
         2: eauto.
@@ -441,7 +567,7 @@ Proof.
               { apply EASE. auto. }
               { apply F12_EQ; auto. } } } } } }
     { rename n into r. rename n0 into n.
-      remember (MiniKanrenSyntax.Prog r) as d. destruct d as [rel [Hcl Hco]].
+      remember (Language.Prog r) as d. destruct d as [rel [Hcl Hco]].
       red in Hco. destruct (Hco t) as [Hcog Hcof].
       red in Hcl. unfold closed_goal_in_context in Hcl.
       econstructor.
@@ -467,7 +593,7 @@ Lemma den_sem_another_fresh_var
       [| l | b a2 , fa2 |].
 Proof.
   destruct (name_eq_dec a1 a2); subst.
-  { apply completeness_condition_lev with fa1; auto.
+  { apply closedness_condition_lev with fa1; auto.
     intros. destruct (name_eq_dec x a2); subst; auto. }
   { good_inversion CG. red in CB_FG.
     eapply den_sem_rename_var with (g1 := (b a1)) (n := max n (max (S a1) (S a2))); eauto.

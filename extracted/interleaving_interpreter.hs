@@ -1,4 +1,4 @@
-module Interpreter where
+module Interleaving_interpreter where
 
 import qualified Prelude
 
@@ -205,14 +205,8 @@ unification_step t1 t2 =
          x -> x};
        Right -> NonUnifiable}}}
 
-data Mgu =
-   MguNonUnifiable Term Term
- | MguSame Term Term
- | MguVarSubstNone Term Term Name Term Mgu
- | MguVarSubstSome Term Term Name Term Subst Subst Mgu
-
-mgu_exists :: Term -> Term -> SigT (Option Subst) Mgu
-mgu_exists t1 t2 =
+mgu_result_exists :: Term -> Term -> SigT (Option Subst) ()
+mgu_result_exists t1 t2 =
   let {
    h = well_founded_induction (\x h ->
          eq_rec_r __ (\h0 ->
@@ -220,8 +214,8 @@ mgu_exists t1 t2 =
             Pair t3 t4 ->
              let {u = unification_step t3 t4} in
              case u of {
-              NonUnifiable -> ExistT None (MguNonUnifiable t3 t4);
-              Same -> ExistT (Some empty_subst) (MguSame t3 t4);
+              NonUnifiable -> ExistT None __;
+              Same -> ExistT (Some empty_subst) __;
               VarSubst n t ->
                let {
                 h1 = h0 (Pair (apply_subst (singleton_subst n t) t3)
@@ -229,19 +223,20 @@ mgu_exists t1 t2 =
                in
                let {h2 = h1 __} in
                case h2 of {
-                ExistT x0 m ->
+                ExistT x0 _ ->
                  case x0 of {
                   Some s -> ExistT (Some (compose (singleton_subst n t) s))
-                   (MguVarSubstSome t3 t4 n t s
-                   (compose (singleton_subst n t) s) m);
-                  None -> ExistT None (MguVarSubstNone t3 t4 n t m)}}}}) __ h)
-         (Pair t1 t2)}
+                   __;
+                  None -> ExistT None __}}}}) __ h) (Pair t1 t2)}
   in
   eq_rec_r __ (\h0 -> h0) __ h
 
+data Stream a =
+   Nil0
+ | Cons0 a (Stream a)
+
 data Goal =
    Fail
- | Cut
  | Unify Term Term
  | Disj Goal Goal
  | Conj Goal Goal
@@ -258,132 +253,88 @@ prog :: Spec
 prog =
   Prelude.error "AXIOM TO BE REALIZED"
 
-data Stream a =
-   Nil0
- | Cons0 a (Stream a)
-
-helper :: (Stream a1) -> Stream a1
-helper s =
-  s
-
-data State' =
+data Nt_state =
    Leaf Goal Subst Nat
- | Sum State' State'
- | Prod0 State' Goal
+ | Sum Nt_state Nt_state
+ | Prod0 Nt_state Goal
 
-state'_rect :: (Goal -> Subst -> Nat -> a1) -> (State' -> a1 -> State' -> a1
-               -> a1) -> (State' -> a1 -> Goal -> a1) -> State' -> a1
-state'_rect f f0 f1 s =
-  case s of {
-   Leaf g s0 n -> f g s0 n;
-   Sum s0 s1 -> f0 s0 (state'_rect f f0 f1 s0) s1 (state'_rect f f0 f1 s1);
-   Prod0 s0 g -> f1 s0 (state'_rect f f0 f1 s0) g}
+nt_state_rect :: (Goal -> Subst -> Nat -> a1) -> (Nt_state -> a1 -> Nt_state
+                 -> a1 -> a1) -> (Nt_state -> a1 -> Goal -> a1) -> Nt_state
+                 -> a1
+nt_state_rect f f0 f1 n =
+  case n of {
+   Leaf g s n0 -> f g s n0;
+   Sum n0 n1 ->
+    f0 n0 (nt_state_rect f f0 f1 n0) n1 (nt_state_rect f f0 f1 n1);
+   Prod0 n0 g -> f1 n0 (nt_state_rect f f0 f1 n0) g}
 
-state'_rec :: (Goal -> Subst -> Nat -> a1) -> (State' -> a1 -> State' -> a1
-              -> a1) -> (State' -> a1 -> Goal -> a1) -> State' -> a1
-state'_rec =
-  state'_rect
+nt_state_rec :: (Goal -> Subst -> Nat -> a1) -> (Nt_state -> a1 -> Nt_state
+                -> a1 -> a1) -> (Nt_state -> a1 -> Goal -> a1) -> Nt_state ->
+                a1
+nt_state_rec =
+  nt_state_rect
 
-data State0 =
+data State =
    Stop
- | State State'
+ | NTState Nt_state
 
 data Label =
    Step
  | Answer Subst Nat
 
-data Eval_step =
-   EsFail Subst Nat
- | EsCut Subst Nat
- | EsUnifyFail Term Term Subst Nat Mgu
- | EsUnifySuccess Term Term Subst Subst Nat Mgu
- | EsDisj Goal Goal Subst Nat
- | EsConj Goal Goal Subst Nat
- | EsFresh (Name -> Goal) Subst Nat
- | EsInvoke Name Term Subst Nat
- | EsSumE State' State' Label Eval_step
- | EsSumNE State' State' State' Label Eval_step
- | EsProdSE State' Goal Eval_step
- | EsProdAE State' Goal Subst Nat Eval_step
- | EsProdSNE State' Goal State' Eval_step
- | EsProdANE State' Goal Subst Nat State' Eval_step
-
-eval_step_exists :: State' -> SigT Label (SigT State0 Eval_step)
-eval_step_exists st' =
-  state'_rec (\g s n ->
+eval_step_exists :: Nt_state -> SigT Label (SigT State ())
+eval_step_exists nst =
+  nt_state_rec (\g s n ->
     case g of {
-     Fail -> ExistT Step (ExistT Stop (EsFail s n));
-     Cut -> ExistT (Answer s n) (ExistT Stop (EsCut s n));
+     Fail -> ExistT Step (ExistT Stop __);
      Unify t t0 ->
-      let {h = mgu_exists (apply_subst s t) (apply_subst s t0)} in
+      let {h = mgu_result_exists (apply_subst s t) (apply_subst s t0)} in
       case h of {
-       ExistT x m ->
+       ExistT x _ ->
         case x of {
-         Some s0 -> ExistT (Answer (compose s s0) n) (ExistT Stop
-          (EsUnifySuccess t t0 s s0 n m));
-         None -> ExistT Step (ExistT Stop (EsUnifyFail t t0 s n m))}};
-     Disj g1 g2 -> ExistT Step (ExistT (State (Sum (Leaf g1 s n) (Leaf g2 s
-      n))) (EsDisj g1 g2 s n));
-     Conj g1 g2 -> ExistT Step (ExistT (State (Prod0 (Leaf g1 s n) g2))
-      (EsConj g1 g2 s n));
-     Fresh g0 -> ExistT Step (ExistT (State (Leaf (g0 n) s (S n))) (EsFresh
-      g0 s n));
-     Invoke n0 t -> ExistT Step (ExistT (State (Leaf (proj1_sig (prog n0) t)
-      s n)) (EsInvoke n0 t s n))}) (\st'1 iHst'1 st'2 _ ->
-    case iHst'1 of {
+         Some s0 -> ExistT (Answer (compose s s0) n) (ExistT Stop __);
+         None -> ExistT Step (ExistT Stop __)}};
+     Disj g1 g2 -> ExistT Step (ExistT (NTState (Sum (Leaf g1 s n) (Leaf g2 s
+      n))) __);
+     Conj g1 g2 -> ExistT Step (ExistT (NTState (Prod0 (Leaf g1 s n) g2)) __);
+     Fresh g0 -> ExistT Step (ExistT (NTState (Leaf (g0 n) s (S n))) __);
+     Invoke n0 t -> ExistT Step (ExistT (NTState (Leaf
+      (proj1_sig (prog n0) t) s n)) __)}) (\_ iHnst1 nst2 _ ->
+    case iHnst1 of {
      ExistT l1 s ->
       case s of {
-       ExistT st1 iH1 ->
+       ExistT st1 _ ->
         case st1 of {
-         Stop -> ExistT l1 (ExistT (State st'2) (EsSumE st'1 st'2 l1 iH1));
-         State s0 -> ExistT l1 (ExistT (State (Sum st'2 s0)) (EsSumNE st'1 s0
-          st'2 l1 iH1))}}}) (\st'0 iHst' g ->
-    case iHst' of {
+         Stop -> ExistT l1 (ExistT (NTState nst2) __);
+         NTState n -> ExistT l1 (ExistT (NTState (Sum nst2 n)) __)}}})
+    (\_ iHnst g ->
+    case iHnst of {
      ExistT l s ->
       case s of {
-       ExistT st iH ->
+       ExistT st _ ->
         case st of {
          Stop ->
           case l of {
-           Step -> ExistT Step (ExistT Stop (EsProdSE st'0 g iH));
-           Answer s0 n -> ExistT Step (ExistT (State (Leaf g s0 n)) (EsProdAE
-            st'0 g s0 n iH))};
-         State s0 ->
+           Step -> ExistT Step (ExistT Stop __);
+           Answer s0 n -> ExistT Step (ExistT (NTState (Leaf g s0 n)) __)};
+         NTState n ->
           case l of {
-           Step -> ExistT Step (ExistT (State (Prod0 s0 g)) (EsProdSNE st'0 g
-            s0 iH));
-           Answer s1 n -> ExistT Step (ExistT (State (Sum (Leaf g s1 n)
-            (Prod0 s0 g))) (EsProdANE st'0 g s1 n s0 iH))}}}}) st'
+           Step -> ExistT Step (ExistT (NTState (Prod0 n g)) __);
+           Answer s0 n0 -> ExistT Step (ExistT (NTState (Sum (Leaf g s0 n0)
+            (Prod0 n g))) __)}}}}) nst
 
 type Trace = Stream Label
 
-data Op_sem =
-   OsStop
- | OsState State' Label State0 Trace Eval_step Op_sem
-
-trace_from :: State0 -> Trace
+trace_from :: State -> Trace
 trace_from st =
   case st of {
    Stop -> Nil0;
-   State st' ->
-    case eval_step_exists st' of {
+   NTState nst ->
+    case eval_step_exists nst of {
      ExistT l s -> case s of {
-                    ExistT st'' _ -> Cons0 l (trace_from st'')}}}
+                    ExistT nst' _ -> Cons0 l (trace_from nst')}}}
 
-trace_from_correct :: State0 -> Op_sem
-trace_from_correct st =
-  case st of {
-   Stop -> eq_rec_r (helper (trace_from Stop)) OsStop (trace_from Stop);
-   State s ->
-    eq_rec_r (helper (trace_from (State s)))
-      (let {s0 = eval_step_exists s} in
-       case s0 of {
-        ExistT x s1 ->
-         case s1 of {
-          ExistT x0 e -> OsState s x x0 (trace_from x0) e
-           (trace_from_correct x0)}}) (trace_from (State s))}
-
-op_sem_exists :: State0 -> SigT Trace Op_sem
+op_sem_exists :: State -> SigT Trace ()
 op_sem_exists st =
-  ExistT (trace_from st) (trace_from_correct st)
+  ExistT (trace_from st) __
 

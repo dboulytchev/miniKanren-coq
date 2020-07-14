@@ -1,5 +1,5 @@
 COQMODULE    := semantics
-COQTHEORIES  := src/*.v
+COQTHEORIES  := src/Preliminaries/*.v src/InterleavingSearch/*.v src/SLDSearch/*.v
 
 .PHONY: all theories clean tounicode
 
@@ -25,6 +25,10 @@ Makefile.coq: Makefile $(COQTHEORIES)
 clean:
 	(test -f Makefile.coq && $(MAKE) -f Makefile.coq clean) || true
 	rm -f _CoqProject Makefile.coq
+	find src/ -type f -name "*.vo" -delete
+	find src/ -type f -name "*.vos" -delete
+	find src/ -type f -name "*.vok" -delete
+	find src/ -type f -name "*.glob" -delete
 
 tounicode:
 	sed -i 's/<</⟪/g' $(COQTHEORIES) 

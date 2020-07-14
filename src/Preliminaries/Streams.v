@@ -39,7 +39,7 @@ Section Stream.
   | inTail : forall x h t (IN : in_stream x t),
                           in_stream x (Cons h t).
 
-  Hint Constructors in_stream.
+  Hint Constructors in_stream : core.
 
   Lemma in_equal_streams
         (s1 s2 : stream)
@@ -59,7 +59,7 @@ Section Stream.
   | fCons : forall h t (FIN : finite t),
                        finite (Cons h t).
 
-  Hint Constructors finite.
+  Hint Constructors finite : core.
 
   CoInductive interleave : stream -> stream -> stream -> Prop :=
   | interNil  : forall s s'     (EQS : equal_streams s s'),
