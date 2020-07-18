@@ -500,7 +500,7 @@ Proof.
   red; intro; eapply fvOrder_wf'; eauto.
 Defined.
 
-Inductive mgu : term -> term -> option subst -> Set :=
+Inductive mgu : term -> term -> option subst -> Prop :=
 | mguNonUnifiable : forall t1 t2 (STEP_NU : unification_step t1 t2 = NonUnifiable),
                                  mgu t1 t2 None
 | mguSame :         forall t1 t2 (STEP_SAME : unification_step t1 t2 = Same),

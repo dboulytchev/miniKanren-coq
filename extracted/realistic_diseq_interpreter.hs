@@ -1,4 +1,4 @@
-module Obvious_diseq_interpreter where
+module Realistic_diseq_interpreter where
 
 import qualified Prelude
 
@@ -61,6 +61,16 @@ snd p =
 data List a =
    Nil
  | Cons a (List a)
+
+list_rect :: a2 -> (a1 -> (List a1) -> a2 -> a2) -> (List a1) -> a2
+list_rect f f0 l =
+  case l of {
+   Nil -> f;
+   Cons y l0 -> f0 y l0 (list_rect f f0 l0)}
+
+list_rec :: a2 -> (a1 -> (List a1) -> a2 -> a2) -> (List a1) -> a2
+list_rec =
+  list_rect
 
 app :: (List a1) -> (List a1) -> List a1
 app l m =
@@ -255,7 +265,7 @@ data Stream a =
    Nil0
  | Cons0 a (Stream a)
 
-type Constraint_store = List (Prod Term Term)
+type Constraint_store = List Subst
 
 init_cs :: Constraint_store
 init_cs =
@@ -263,13 +273,57 @@ init_cs =
 
 add_constraint_exists :: Subst -> Constraint_store -> Term -> Term -> SigT
                          (Option Constraint_store) ()
-add_constraint_exists _ cs t1 t2 =
-  ExistT (Some (Cons (Pair t1 t2) cs)) __
+add_constraint_exists s cs t1 t2 =
+  let {mGU_E = mgu_exists (apply_subst s t1) (apply_subst s t2)} in
+  case mGU_E of {
+   ExistT r _ ->
+    case r of {
+     Some s0 ->
+      case s0 of {
+       Nil -> ExistT None __;
+       Cons p s1 -> ExistT (Some (Cons (Cons p s1) cs)) __};
+     None -> ExistT (Some cs) __}}
+
+list_to_term :: (List Term) -> Term
+list_to_term ts =
+  case ts of {
+   Nil -> Cst O;
+   Cons t ts0 -> Con (S O) t (list_to_term ts0)}
+
+upd_constr_exists :: Subst -> Subst -> Subst -> SigT (Option Subst) ()
+upd_constr_exists _ w d =
+  let {
+   mGU_E = mgu_exists
+             (list_to_term
+               (map fst
+                 (map (\p -> Pair (apply_subst d (Var (fst p)))
+                   (apply_subst d (snd p))) w)))
+             (list_to_term
+               (map snd
+                 (map (\p -> Pair (apply_subst d (Var (fst p)))
+                   (apply_subst d (snd p))) w)))}
+  in
+  case mGU_E of {
+   ExistT r _ -> ExistT r __}
 
 upd_cs_exists :: Subst -> Constraint_store -> Subst -> SigT
                  (Option Constraint_store) ()
-upd_cs_exists _ cs _ =
-  ExistT (Some cs) __
+upd_cs_exists s cs d =
+  list_rec (ExistT (Some Nil) __) (\a _ iHcs ->
+    case iHcs of {
+     ExistT rcs' _ ->
+      let {uPD_C_E = upd_constr_exists s a d} in
+      case uPD_C_E of {
+       ExistT rw' _ ->
+        case rcs' of {
+         Some cs' ->
+          case rw' of {
+           Some w' ->
+            case w' of {
+             Nil -> ExistT None __;
+             Cons p w'0 -> ExistT (Some (Cons (Cons p w'0) cs')) __};
+           None -> ExistT (Some cs') __};
+         None -> ExistT None __}}}) cs
 
 data State' =
    Leaf Goal Subst Constraint_store Nat

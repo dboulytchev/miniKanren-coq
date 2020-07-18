@@ -10,9 +10,12 @@ The folder 'src' contains the formalization of the system and all the proofs:
 - OperationalSem.v -- abstract constraint store definition and parametrized operational semantics
 - OpSemSoundness.v -- soundness of the interleaving search under conditions
 - OpSemCompleteness.v -- completeness of the interleaving search under conditions
-- ObviousDisequality.v -- obvious concrete implementation of constraint stores
+- ObviousDisequality.v -- obvious implementation of constraint stores
+- RealisticDisequality.v -- realistic implementation of constraint stores
 
 The folder 'extracted' contains reference interpreters:
 
 - obvious_diseq_interpreter.hs -- the code extracted from operational semantics instantiated with the obvious constraint stores implementation (from ObviousDisequality.v)
 - obvious_diseq_interpreter_wrapped.hs -- the code from obvious_diseq_interpreter.hs appended with primitives for more convenient use and some tests
+- realistic_diseq_interpreter.hs -- the code extracted from operational semantics instantiated with the realistic constraint stores implementation (from RealisticDisequality.v)
+- realistic_diseq_interpreter_wrapped.hs -- the code from realistic_diseq_interpreter.hs appended with primitives for more convenient use and some tests

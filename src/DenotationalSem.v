@@ -314,7 +314,7 @@ Inductive in_denotational_sem_goal : goal -> repr_fun -> Prop :=
                               [| Invoke r t, f |]
 where "[| g , f |]" := (in_denotational_sem_goal g f).
 
-Hint Constructors in_denotational_sem_goal.
+Hint Constructors in_denotational_sem_goal : core.
 
 Reserved Notation "[| n | g , f |]" (at level 0).
 
@@ -339,7 +339,7 @@ Inductive in_denotational_sem_lev_goal : nat -> goal -> repr_fun -> Prop :=
                               [| S l | Invoke r t , f |]
 where "[| n | g , f |]" := (in_denotational_sem_lev_goal n g f).
 
-Hint Constructors in_denotational_sem_lev_goal.
+Hint Constructors in_denotational_sem_lev_goal : core.
 
 Lemma in_denotational_sem_zero_lev
       (g : goal)

@@ -21,22 +21,23 @@ Import OperationalSemCS.
 
 Lemma answer_correct
       (s : subst)
-      (cs : constraint_store s)
+      (cs : constraint_store)
       (n : nat)
       (f : repr_fun)
       (DSS : [ s , f ])
       (DSCS : [| s , cs , f |])
       (st' : state')
+      (WF : well_formed_state' st')
       (st : state)
       (EV : eval_step st' (Answer s cs n) st) :
       in_denotational_sem_state' st' f.
 Proof.
-  remember (Answer s cs n) as l.
-  induction EV; good_inversion Heql; simpl_existT_cs_same; auto.
+  (* eapply wf_cs_in_answer in WF; eauto. *) remember (Answer s cs n) as l.
+  induction EV; good_inversion Heql; good_inversion WF; auto.
   { assert (DSS_copy := DSS). apply (denotational_sem_uni _ _ _ _ MGU _) in DSS.
     destruct DSS as [DSS EQ]. constructor; auto.
-    eapply proj1. apply (upd_cs_success_condition _ _ _ _ UPD_CS f). auto. }
-  { specialize (add_constraint_success_condition _ _ _ _ _ ADD_C f). intro ADD_C_COND.
+    eapply proj1. apply (upd_cs_success_condition _ _ _ _ WF_CS UPD_CS f). auto. }
+  { specialize (add_constraint_success_condition _ _ _ _ _ WF_CS ADD_C f). intro ADD_C_COND.
     specialize (conj DSCS DSS). intro CONJ. apply ADD_C_COND in CONJ.
     destruct CONJ as [DSCS0 [_ GT_NEQ]].
     constructor; auto. }
@@ -53,23 +54,22 @@ Lemma next_state_correct
       in_denotational_sem_state' st' f.
 Proof.
   induction EV; good_inversion DSS.
-  { good_inversion DSST'; good_inversion DSST'0; simpl_existT_cs_same;
+  { good_inversion DSST'; good_inversion DSST'0;
     constructor; auto. }
-  { good_inversion DSST'. good_inversion DSST'0. simpl_existT_cs_same. auto. }
-  { good_inversion WF. good_inversion DSST'. simpl_existT_cs_same.
+  { good_inversion DSST'. good_inversion DSST'0. auto. }
+  { good_inversion WF. good_inversion DSST'.
     constructor; auto. econstructor; eauto.
     intros HIn. apply FV_LT_COUNTER in HIn.
     { omega. }
     { reflexivity. } }
-  { good_inversion DSST'. simpl_existT_cs_same. auto. }
+  { good_inversion DSST'. auto. }
   { auto. }
   { good_inversion WF. good_inversion DSST'; auto. }
-  { good_inversion DSST'. constructor; auto.
-    simpl_existT_cs_same. eapply answer_correct; eauto. }
+  { good_inversion WF. good_inversion DSST'. constructor; auto.
+    eapply answer_correct; eauto. }
   { good_inversion WF. good_inversion DSST'. auto. }
   { good_inversion WF. good_inversion DSST'.
-    { good_inversion DSST'0. simpl_existT_cs_same.
-      constructor; auto.
+    { good_inversion DSST'0. constructor; auto.
       eapply answer_correct; eauto. }
     { good_inversion DSST'0. auto. } }
 Qed.
@@ -86,11 +86,10 @@ Proof.
   revert HOP WF. revert st.
   red in HDA. destruct HDA as [s [cs [n [HInStr [DSS DSCS]]]]].
   remember (Answer s cs n) as l. induction HInStr.
-  { intros. inversion HOP; clear HOP; subst.
+  { intros. good_inversion HOP. good_inversion WF.
     constructor. eapply answer_correct; eauto. }
   { specialize (IHHInStr Heql). intros.
-    inversion HOP; clear HOP; subst.
-    inversion WF; clear WF; subst.
+    good_inversion HOP. good_inversion WF.
     specialize (well_formedness_preservation _ _ _ EV wfState).
     intro wf_st0.
     specialize (IHHInStr st0 OP wf_st0).

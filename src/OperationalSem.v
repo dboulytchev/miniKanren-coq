@@ -9,73 +9,229 @@ Require Import MiniKanrenSyntax.
 Require Import Stream.
 Require Import DenotationalSem.
 
+Definition narrowing_subst (s : subst) : Prop := forall x, in_subst_vran s x ->  ~ in_subst_dom s x.
 
-Definition dep_pair_cs_same (A : Set)
-                            (B : A -> Set)
-                            (a : A)
-                            (b : B a)
-                            (b' : B a)
-                            (EQ : existT (fun a : A => B a) a b =
-                                  existT (fun a : A => B a) a b') :
-                            b = b'.
-Proof. inversion_sigma. subst. elim_eq_rect. reflexivity. Qed.
+Definition extending_subst (s w : subst) : Prop :=
+  (forall x, in_subst_dom w x -> ~ in_subst_dom s x) /\
+  (forall x, in_subst_vran w x -> ~ in_subst_dom s x).
 
-Ltac simpl_existT_cs_same :=
-  repeat
-    (match goal with
-      [ H : existT _ ?x _ = existT _ ?x _ |- _ ] => apply dep_pair_cs_same in H; subst
-    end).
+Definition nodup_dom (s : subst) : Prop := NoDup (map fst s).
 
+Lemma apply_subst_FV_stronger
+      (x : name)
+      (t : term)
+      (s : subst)
+      (X_FV : In x (fv_term (apply_subst s t))) :
+      (In x (fv_term t) /\ image s x = None) \/ in_subst_vran s x.
+Proof.
+  induction t; try contradiction.
+  { simpl in X_FV. destruct (image s n) eqn:EQ.
+    { right. red. exists n. exists t. auto. }
+    { left. split; auto. destruct X_FV; try contradiction. subst. auto. } }
+  { simpl in X_FV. apply (set_union_elim name_eq_dec) in X_FV. destruct X_FV.
+    { apply IHt1 in H. destruct H.
+      { destruct H. left. split; auto. apply (set_union_intro name_eq_dec). left. auto. }
+      { right. auto. } }
+    { apply IHt2 in H. destruct H.
+      { destruct H. left. split; auto. apply (set_union_intro name_eq_dec). right. auto. }
+      { right. auto. } } }
+Qed.
+
+Lemma compose_vran_stronger
+      (s d : subst)
+      (y : name)
+      (IN_VRAN_COMP : in_subst_vran (compose s d) y) :
+      (in_subst_vran s y /\ ~ in_subst_dom d y) \/ in_subst_vran d y.
+Proof.
+  destruct IN_VRAN_COMP as [x [t [IN_IMAGE IN_FV]]].
+  assert (GEN : (exists t0, image s x = Some t0 /\ In y (fv_term t0) /\ ~ in_subst_dom d y) \/ in_subst_vran d y).
+  { induction s.
+    { right. red. eauto. }
+    { destruct a. simpl in IN_IMAGE. simpl. destruct (Nat.eq_dec n x).
+      { inversion IN_IMAGE. subst. apply apply_subst_FV_stronger in IN_FV.
+        destruct IN_FV; auto. destruct H. left. exists t0. split; try split; auto.
+        intro C. destruct C. rewrite H0 in H1. good_inversion H1. }
+      { apply IHs in IN_IMAGE. destruct IN_IMAGE; auto. } } }
+  destruct GEN.
+  { left. destruct H as [t0 [IMG [IN_VRAN NIN_DOM]]]. split; eauto. red. eauto. }
+  { right. auto. }
+Qed.
+
+Lemma compose_narrowing_extending
+      (s d : subst)
+      (NAR_s : narrowing_subst s)
+      (NAR_d : narrowing_subst d)
+      (EXT : extending_subst s d) :
+      narrowing_subst (compose s d).
+Proof.
+  red in NAR_s. red in NAR_d. red in EXT. destruct EXT as [EXT_DOM EXT_VRAN].
+  red. intros x IN_VRAN_COMP IN_DOM_COMP. apply compose_dom in IN_DOM_COMP.
+  apply compose_vran_stronger in IN_VRAN_COMP. destruct IN_DOM_COMP; destruct IN_VRAN_COMP.
+  { destruct H0. apply NAR_s in H0. auto. }
+  { apply EXT_VRAN in H0. auto. }
+  { destruct H0. auto. }
+  { apply NAR_d in H0. auto. }
+Qed.
+
+Lemma in_fst_dom
+      (s : subst)
+      (n : name)
+      (IN : In n (map fst s)) :
+      in_subst_dom s n.
+Proof.
+  revert IN. induction s; try contradiction.
+  intros. red. destruct a. simpl in IN. simpl. destruct (Nat.eq_dec n0 n); subst.
+  { eexists; eauto. }
+  { destruct IN; try contradiction. apply IHs in H. auto. }
+Qed.
+
+Lemma mgu_nodup_dom
+      (t1 t2 : term)
+      (m : subst)
+      (MGU : mgu t1 t2 (Some m)) :
+      nodup_dom m.
+Proof.
+  remember (Some m) as r eqn:EQ. revert EQ. revert m.
+  induction MGU; intros m EQ; good_inversion EQ.
+  { constructor. }
+  { specialize (IHMGU r eq_refl).
+    unfold compose. simpl. constructor; auto. simpl. intro C.
+    apply in_fst_dom in C. eapply mgu_dom in MGU; eauto. destruct MGU.
+    all: eapply unification_step_subst_elims in H; eauto; eapply unification_step_subst_wf; eauto. }
+Qed.
+
+
+Lemma in_apply_narrowing_FV
+      (s : subst)
+      (NAR : narrowing_subst s)
+      (n : name)
+      (t : term)
+      (IN_ts : In n (fv_term (apply_subst s t))) :
+      ~ in_subst_dom s n.
+Proof.
+  apply apply_subst_FV_stronger in IN_ts. destruct IN_ts.
+  { destruct H. intro C. destruct C. rewrite H1 in H0. good_inversion H0. }
+  { auto. }
+Qed.
+
+Lemma mgu_is_extending
+      (s : subst)
+      (NAR : narrowing_subst s)
+      (t1 t2 : term)
+      (m : subst)
+      (MGU : mgu (apply_subst s t1) (apply_subst s t2) (Some m)) :
+      extending_subst s m.
+Proof.
+  red. specialize (mgu_dom _ _ _ MGU). intros IN_DOM_TERMS.
+  specialize (mgu_vran _ _ _ MGU). intros IN_VRAN_TERMS.
+  split.
+  { intros. apply IN_DOM_TERMS in H. destruct H; eapply in_apply_narrowing_FV; eauto. }
+  { intros. apply IN_VRAN_TERMS in H. destruct H; eapply in_apply_narrowing_FV; eauto. }
+Qed.
+
+
+Lemma mgu_is_narrowing
+      (t1 t2 : term)
+      (m : subst)
+      (MGU : mgu t1 t2 (Some m)) :
+      narrowing_subst m.
+Proof.
+  remember (Some m) as r eqn:EQ. revert EQ. revert m.
+  induction MGU; intros m EQ; good_inversion EQ.
+  { red. intros. destruct H as [y [t [IMG _]]]. good_inversion IMG. }
+  { specialize (IHMGU r eq_refl). red.
+    intros. apply compose_vran_stronger in H. intro DOM. apply compose_dom in DOM.
+    destruct H; destruct DOM. 
+    { destruct H. destruct H0. destruct H as [y [ty [IMG_RAN IN_RAN]]].
+      simpl in H0. destruct (Nat.eq_dec n x); good_inversion H0.
+      simpl in IMG_RAN. destruct (Nat.eq_dec x y); good_inversion IMG_RAN.
+      eapply unification_step_subst_wf; eauto. }
+    { destruct H. auto. }
+    { destruct H0. simpl in H0. destruct (Nat.eq_dec n x); good_inversion H0.
+      eapply mgu_vran in H; eauto. destruct H; apply unification_step_subst_elims in H;
+      eapply unification_step_subst_wf; eauto. }
+    { apply IHMGU in H. auto. } }
+Qed.
 
 Module Type ConstraintStoreSig.
 
-Parameter constraint_store : subst -> Set.
+Parameter constraint_store : Set.
 
-Parameter init_cs : constraint_store empty_subst.
 
-Parameter add_constraint : forall (s : subst), constraint_store s -> term -> term -> option (constraint_store s) -> Set.
-
-Axiom add_constraint_exists :
-  forall (s : subst) (cs : constraint_store s) (t1 t2 : term),
-    {r : option (constraint_store s) & add_constraint s cs t1 t2 r}.
-
-Axiom add_constraint_unique :
-  forall (s : subst) (cs : constraint_store s) (t1 t2 : term) (r r' : option (constraint_store s)),
-    add_constraint s cs t1 t2 r -> add_constraint s cs t1 t2 r' -> r = r'.
-
-Parameter upd_cs : forall (s : subst), constraint_store s -> forall (d : subst), option (constraint_store (compose s d)) -> Set.
-
-Axiom upd_cs_exists :
-  forall (s : subst) (cs : constraint_store s) (d : subst),
-    {r : option (constraint_store (compose s d)) & upd_cs s cs d r}.
-
-Axiom upd_cs_unique :
-  forall (s : subst) (cs : constraint_store s) (d : subst) (r r' : option (constraint_store (compose s d))),
-    upd_cs s cs d r -> upd_cs s cs d r' -> r = r'.
-
-Parameter in_denotational_sem_cs : forall (s : subst), constraint_store s -> repr_fun -> Prop.
+Parameter in_denotational_sem_cs : subst -> constraint_store -> repr_fun -> Prop.
 
 Notation "[| s , cs , f |]" := (in_denotational_sem_cs s cs f) (at level 0).
+
+
+Parameter wf_cs : subst -> constraint_store -> Prop.
+
+
+Parameter init_cs : constraint_store.
+
+Axiom wf_init_cs : wf_cs empty_subst init_cs.
+
+
+Parameter add_constraint : subst -> constraint_store -> term -> term -> option constraint_store -> Prop.
+
+Axiom add_constraint_exists :
+  forall (s : subst) (cs : constraint_store) (t1 t2 : term),
+    {r : option constraint_store & add_constraint s cs t1 t2 r}.
+
+Axiom add_constraint_unique :
+  forall (s : subst) (cs : constraint_store) (t1 t2 : term) (r r' : option constraint_store),
+    add_constraint s cs t1 t2 r -> add_constraint s cs t1 t2 r' -> r = r'.
+
+Axiom add_constraint_wf_preservation :
+  forall (s : subst) (cs : constraint_store) (t1 t2 : term) (cs' : constraint_store),
+    narrowing_subst s ->
+    add_constraint s cs t1 t2 (Some cs') ->
+    wf_cs s cs ->
+    wf_cs s cs'.
+
+
+Parameter upd_cs : subst -> constraint_store -> subst -> option constraint_store -> Prop.
+
+Axiom upd_cs_exists :
+  forall (s : subst) (cs : constraint_store) (d : subst),
+    {r : option constraint_store & upd_cs s cs d r}.
+
+Axiom upd_cs_unique :
+  forall (s : subst) (cs : constraint_store) (d : subst) (r r' : option constraint_store),
+    upd_cs s cs d r -> upd_cs s cs d r' -> r = r'.
+
+Axiom upd_cs_wf_preservation :
+  forall (s : subst) (cs : constraint_store) (d : subst) (cs' : constraint_store),
+    narrowing_subst s ->
+    narrowing_subst d ->
+    extending_subst s d ->
+    upd_cs s cs d (Some cs') ->
+    wf_cs s cs ->
+    wf_cs (compose s d) cs'.
+
 
 Axiom init_condition : forall f, [| empty_subst , init_cs , f |].
 
 Axiom add_constraint_fail_condition :
-  forall (s : subst) (cs : constraint_store s) (t1 t2 : term),
+  forall (s : subst) (cs : constraint_store) (t1 t2 : term),
+    wf_cs s cs ->
     add_constraint s cs t1 t2 None ->
     forall f, ~ ([| s , cs  , f |] /\ [ s , f ] /\ [| Disunify t1 t2 , f |]).
 
 Axiom add_constraint_success_condition :
-  forall (s : subst) (cs cs' : constraint_store s) (t1 t2 : term),
+  forall (s : subst) (cs cs' : constraint_store) (t1 t2 : term),
+    wf_cs s cs ->
     add_constraint s cs t1 t2 (Some cs') ->
     forall f, [| s , cs' , f |] /\ [ s , f ] <->
               [| s , cs  , f |] /\ [ s , f ] /\ [| Disunify t1 t2 , f |].
 
 Axiom upd_cs_fail_condition :
-  forall (s : subst) (cs : constraint_store s) (d : subst),
+  forall (s : subst) (cs : constraint_store) (d : subst),
+    wf_cs s cs ->
     upd_cs s cs d None -> forall f, ~ ([| s , cs , f |] /\ [ compose s d , f ]).
 
 Axiom upd_cs_success_condition :
-  forall (s : subst) (cs : constraint_store s) (d : subst) (cs' : constraint_store (compose s d)),
+  forall (s : subst) (cs : constraint_store) (d : subst) (cs' : constraint_store),
+    wf_cs s cs ->
     upd_cs s cs d (Some cs') ->
     forall f, [| compose s d , cs' , f |] /\ [ compose s d , f ] <->
               [| s           , cs  , f |] /\ [ compose s d , f ].
@@ -89,7 +245,7 @@ Import ConstraintStore.
 
 (* Partial state *) 
 Inductive state' : Set :=
-| Leaf : goal -> forall (s : subst), constraint_store s -> nat -> state'
+| Leaf : goal -> subst -> constraint_store -> nat -> state'
 | Sum  : state' -> state' -> state'
 | Prod : state' -> goal   -> state'.
 
@@ -110,13 +266,13 @@ Inductive is_fv_of_state' : name -> state' -> Prop :=
 | isfvst'ProdR : forall x st' g     (X_FV : is_fv_of_goal x g),
                                     is_fv_of_state' x (Prod st' g).
 
-Hint Constructors is_fv_of_state'.
+Hint Constructors is_fv_of_state' : core.
 
 Inductive is_fv_of_state : name -> state -> Prop :=
 | isfvstC : forall x st' (X_FV_ST' : is_fv_of_state' x st'),
                          is_fv_of_state x (State st').
 
-Hint Constructors is_fv_of_state.
+Hint Constructors is_fv_of_state : core.
 
 Inductive is_counter_of_state' : nat -> state' -> Prop :=
 | iscst'Leaf  : forall g s cs n,   is_counter_of_state' n (Leaf g s cs n)
@@ -127,16 +283,18 @@ Inductive is_counter_of_state' : nat -> state' -> Prop :=
 | iscst'Prod  : forall n st' g     (ISC : is_counter_of_state' n st'),
                                    is_counter_of_state' n (Prod st' g).
 
-Hint Constructors is_counter_of_state'.
+Hint Constructors is_counter_of_state' : core.
 
-Inductive well_formed_state' : state' -> Set :=
+Inductive well_formed_state' : state' -> Prop :=
 | wfLeaf : forall g s cs frn
            (DOM_LT_COUNTER  : forall x (X_IN_DOM : in_subst_dom s x), x < frn)
            (VRAN_LT_COUNTER : forall x (X_IN_VRAN : in_subst_vran s x), x < frn)
            (FV_LT_COUNTER   : forall x (X_FV : is_fv_of_goal x g), x < frn)
            (DS_LT_COUNTER   : forall (f f' : repr_fun)
                                      (REQ_ff' : forall x, x < frn -> gt_eq (f x) (f' x)),
-                                     [ s , f ] /\ [| s , cs , f |] <-> [ s , f' ] /\ [| s , cs , f' |]),
+                                     [ s , f ] /\ [| s , cs , f |] <-> [ s , f' ] /\ [| s , cs , f' |])
+           (NAR             : narrowing_subst s)
+           (WF_CS           : wf_cs s cs),
            well_formed_state' (Leaf g s cs frn)
 | wfSum  : forall st'1 st'2 (WF_L : well_formed_state' st'1)
                             (WF_R : well_formed_state' st'2),
@@ -147,7 +305,7 @@ Inductive well_formed_state' : state' -> Set :=
                                                           x < frn),
                             well_formed_state' (Prod st' g).
 
-Hint Constructors well_formed_state'.
+Hint Constructors well_formed_state' : core.
 
 Fixpoint first_nats (k : nat) : list nat :=
   match k with
@@ -162,11 +320,17 @@ Proof.
   { inversion H. { omega. } { apply IHk in H0. omega. } }
 Qed.
 
+Definition initial_state
+           (g   : goal)
+           (k   : nat) :
+           state' :=
+           (Leaf g empty_subst init_cs k).
+
 Lemma well_formed_initial_state
       (g   : goal)
       (k   : nat)
       (HC  : closed_goal_in_context (first_nats k) g) :
-      well_formed_state' (Leaf g empty_subst init_cs k).
+      well_formed_state' (initial_state g k).
 Proof.
   constructor.
   { intros. good_inversion X_IN_DOM. good_inversion H. }
@@ -177,23 +341,26 @@ Proof.
     { apply init_condition. }
     { apply empty_subst_ds. }
     { apply init_condition. } }
+  { red. intros. red in H. destruct H as [y [t [C _]]].
+    good_inversion C. }
+  { apply wf_init_cs. }
 Qed.
 
 
-Inductive well_formed_state : state -> Set :=
+Inductive well_formed_state : state -> Prop :=
 | wfEmpty    : well_formed_state Stop
 | wfNonEmpty : forall st' (wfState : well_formed_state' st'),
                           well_formed_state (State st').
 
-Hint Constructors well_formed_state.
+Hint Constructors well_formed_state : core.
 
 (* Labels *)
 Inductive label : Set :=
 (* nothing                                       *) | Step   : label
-(* answer: (subst, first free semantic variable) *) | Answer : forall (s : subst), constraint_store s -> nat -> label.
+(* answer: (subst, first free semantic variable) *) | Answer : subst -> constraint_store -> nat -> label.
 
 (* Transitions *)
-Inductive eval_step : state' -> label -> state -> Set :=
+Inductive eval_step : state' -> label -> state -> Prop :=
 | esFail         : forall           s cs       n, eval_step (Leaf Fail s cs n) Step Stop
 | esCut          : forall           s cs       n, eval_step (Leaf Cut s cs n)  (Answer s cs n) Stop                             (* cuts are ignored in interliving search *)
 | esUnifyFail    : forall t1 t2     s cs       n  (MGU : mgu (apply_subst s t1) (apply_subst s t2) None),
@@ -225,12 +392,12 @@ Inductive eval_step : state' -> label -> state -> Set :=
 | esProdANE      : forall st g s cs n st'         (STEP_L : eval_step st (Answer s cs n) (State st')),
                                                   eval_step (Prod st g) Step (State (Sum (Leaf g s cs n) (Prod st' g))).
 
-Hint Constructors eval_step.
+Hint Constructors eval_step : core.
 
 Lemma counter_in_answer
       (st' : state')
       (s : subst)
-      (cs : constraint_store s)
+      (cs : constraint_store)
       (n : nat)
       (st : state)
       (EV : eval_step st' (Answer s cs n) st) :
@@ -286,7 +453,7 @@ Qed.
 Lemma well_formed_subst_in_answer
       (st' : state')
       (s : subst)
-      (cs : constraint_store s)
+      (cs : constraint_store)
       (n : nat)
       (st : state)
       (EV : eval_step st' (Answer s cs n) st)
@@ -295,7 +462,7 @@ Lemma well_formed_subst_in_answer
 Proof.
   remember (Answer s cs n). induction EV; good_inversion Heql; good_inversion WF; auto.
   assert (FV_LT_N_1 : forall x, In x (fv_term (apply_subst s0 t1)) -> x < n).
-  { clear MGU H1 H3 UPD_CS. clear cs cs'. clear d. intros. induction t1.
+  { clear MGU UPD_CS. intros. induction t1.
     { simpl in H. destruct (image s0 n0) eqn:eq; auto.
       apply VRAN_LT_COUNTER. red. eauto. }
     { good_inversion H. }
@@ -307,7 +474,7 @@ Proof.
         good_inversion X_FV; auto. apply fvUnifyL. simpl.
         apply set_union_intro. right. auto. } } }
   assert (FV_LT_N_2 : forall x, In x (fv_term (apply_subst s0 t2)) -> x < n).
-  { clear MGU H1 H3 UPD_CS. clear cs cs'. clear d. intros. induction t2.
+  { clear MGU UPD_CS. intros. induction t2.
     { simpl in H. destruct (image s0 n0) eqn:eq; auto.
       apply VRAN_LT_COUNTER. red. eauto. }
     { good_inversion H. }
@@ -330,7 +497,7 @@ Qed.
 Lemma well_formed_ds_in_answer
       (st' : state')
       (s : subst)
-      (cs : constraint_store s)
+      (cs : constraint_store)
       (n : nat)
       (st : state)
       (EV : eval_step st' (Answer s cs n) st)
@@ -341,11 +508,11 @@ Lemma well_formed_ds_in_answer
 Proof.
   assert (AND_IFF_SPLIT : forall A B C D, (A <-> C) -> (B <-> D) -> (A /\ B <-> C /\ D)).
   { intros. split; split; auto; destruct H1; destruct H0; destruct H; auto. }
-  remember (Answer s cs n). induction EV; good_inversion Heql; good_inversion WF; simpl_existT_cs_same; auto; specialize (DS_LT_COUNTER f f' REQ_ff').
+  remember (Answer s cs n). induction EV; good_inversion Heql; good_inversion WF; auto; specialize (DS_LT_COUNTER f f' REQ_ff').
   { rewrite and_comm.
     eapply iff_trans. 2: apply and_comm.
-    rewrite (upd_cs_success_condition _ _ _ _ UPD_CS).
-    rewrite (upd_cs_success_condition _ _ _ _ UPD_CS).
+    rewrite (upd_cs_success_condition _ _ _ _ WF_CS UPD_CS).
+    rewrite (upd_cs_success_condition _ _ _ _ WF_CS UPD_CS).
     rewrite (denotational_sem_uni _ _ _ _ MGU f).
     rewrite (denotational_sem_uni _ _ _ _ MGU f').
     rewrite <- and_assoc. rewrite <- and_assoc.
@@ -362,8 +529,8 @@ Proof.
         { apply apply_repr_fun_fv. intros. symmetry. apply REQ_ff'. auto. } } } }
   { rewrite and_comm.
     eapply iff_trans. 2: apply and_comm.
-    rewrite (add_constraint_success_condition _ _ _ _ _ ADD_C).
-    rewrite (add_constraint_success_condition _ _ _ _ _ ADD_C).
+    rewrite (add_constraint_success_condition _ _ _ _ _ WF_CS ADD_C).
+    rewrite (add_constraint_success_condition _ _ _ _ _ WF_CS ADD_C).
     rewrite <- and_assoc. rewrite <- and_assoc.
     apply AND_IFF_SPLIT.
     { rewrite and_comm. rewrite DS_LT_COUNTER. apply and_comm. }
@@ -378,6 +545,40 @@ Proof.
         { apply apply_repr_fun_fv. intros. apply REQ_ff'. auto. } } } }
 Qed.
 
+Lemma narrowing_subst_in_answer
+      (st' : state')
+      (s : subst)
+      (cs : constraint_store)
+      (n : nat)
+      (st : state)
+      (EV : eval_step st' (Answer s cs n) st)
+      (WF : well_formed_state' st') :
+      narrowing_subst s.
+Proof.
+  remember (Answer s cs n). induction EV; good_inversion Heql; good_inversion WF; auto.
+  apply compose_narrowing_extending; auto.
+  { eapply mgu_is_narrowing; eauto. }
+  { eapply mgu_is_extending; eauto. }
+Qed.
+
+
+Lemma wf_cs_in_answer
+      (st' : state')
+      (s : subst)
+      (cs : constraint_store)
+      (n : nat)
+      (st : state)
+      (EV : eval_step st' (Answer s cs n) st)
+      (WF : well_formed_state' st') :
+      wf_cs s cs.
+Proof.
+  remember (Answer s cs n). induction EV; good_inversion Heql; good_inversion WF; auto.
+  { eapply upd_cs_wf_preservation; eauto.
+    { eapply mgu_is_narrowing; eauto. }
+    { eapply mgu_is_extending; eauto. } }
+  { eapply add_constraint_wf_preservation; eauto. }
+Qed.
+
 Lemma well_formedness_preservation
       (st' : state')
       (l : label)
@@ -386,7 +587,7 @@ Lemma well_formedness_preservation
       (WF : well_formed_state' st') :
       well_formed_state st.
 Proof.
-  intros. induction EV; good_inversion WF; simpl_existT_cs_same; auto.
+  intros. induction EV; good_inversion WF; auto.
   { constructor. auto. }
   { constructor. constructor; auto.
     intros. good_inversion FRN_COUNTER. subst. auto. }
@@ -401,6 +602,8 @@ Proof.
   { specialize (IHEV WF_L).
     good_inversion IHEV. auto. }
   { constructor. constructor; auto.
+    6: eapply wf_cs_in_answer; eauto.
+    5: eapply narrowing_subst_in_answer; eauto.
     4: eapply well_formed_ds_in_answer; eauto.
     1-2: apply well_formed_subst_in_answer in EV; destruct EV; auto.
     intros. apply FV_LT_COUNTER; auto. eapply counter_in_answer; eauto. }
@@ -413,6 +616,8 @@ Proof.
   { specialize (IHEV WF_L). good_inversion IHEV.
     constructor. constructor.
     { constructor.
+      6: eapply wf_cs_in_answer; eauto.
+      5: eapply narrowing_subst_in_answer; eauto.
       4: eapply well_formed_ds_in_answer; eauto.
       1-2: apply well_formed_subst_in_answer in EV; destruct EV; auto.
       intros. apply FV_LT_COUNTER; auto.
@@ -458,8 +663,7 @@ Lemma eval_step_unique
       l1 = l2 /\ st1 = st2.
 Proof.
   revert STEP_1 STEP_2. revert l1 l2 st1 st2. induction st'.
-  { intros. destruct g; good_inversion STEP_1; good_inversion STEP_2;
-    simpl_existT_cs_same; auto.
+  { intros. destruct g; good_inversion STEP_1; good_inversion STEP_2; auto.
     { assert (C : None = Some d).
       { eapply mgu_unique; eassumption. }
       inversion C. }
@@ -504,13 +708,13 @@ Qed.
 (* Traces *)
 Definition trace : Set := @stream label.
 
-CoInductive op_sem : state -> trace -> Set :=
+CoInductive op_sem : state -> trace -> Prop :=
 | osStop : op_sem Stop Nil
 | osState : forall st' l st t (EV: eval_step st' l st)
                               (OP: op_sem st t),
                               op_sem (State st') (Cons l t).
 
-Hint Constructors op_sem.
+Hint Constructors op_sem : core.
 
 CoFixpoint trace_from (st : state) : trace :=
   match st with
@@ -558,7 +762,7 @@ Proof.
 Qed.
 
 Definition in_denotational_analog (t : trace) (f : repr_fun) : Prop :=
-  exists (s : subst) (cs : constraint_store s) (n : nat),
+  exists (s : subst) (cs : constraint_store) (n : nat),
     in_stream (Answer s cs n) t /\ [ s ,  f ] /\ [| s , cs , f |].
 
 Notation "{| t , f |}" := (in_denotational_analog t f).
@@ -576,19 +780,19 @@ Inductive in_denotational_sem_state' : state' -> repr_fun -> Prop :=
                              (DSST' : in_denotational_sem_state' st' f),
                              in_denotational_sem_state' (Prod st' g) f.
 
-Hint Constructors in_denotational_sem_state'.
+Hint Constructors in_denotational_sem_state' : core.
 
 Inductive in_denotational_sem_state : state -> repr_fun -> Prop :=
 | dsstState : forall st' f (DSST' : in_denotational_sem_state' st' f),
                            in_denotational_sem_state (State st') f.
 
-Hint Constructors in_denotational_sem_state.
+Hint Constructors in_denotational_sem_state : core.
 
 Lemma counter_in_trace
       (g : goal)
       (s sr : subst)
-      (cs : constraint_store s)
-      (csr : constraint_store sr)
+      (cs : constraint_store)
+      (csr : constraint_store)
       (n nr : nat)
       (tr : trace)
       (OP : op_sem (State (Leaf g s cs n)) tr)
@@ -615,7 +819,7 @@ Lemma well_formed_subst_in_trace
       (t : trace)
       (OP : op_sem st t)
       (s : subst)
-      (cs : constraint_store s)
+      (cs : constraint_store)
       (n : nat)
       (IS_ANS: in_stream (Answer s cs n) t) :
       (forall x, in_subst_dom s x -> x < n) /\ (forall x, in_subst_vran s x -> x < n).
@@ -635,7 +839,7 @@ Lemma well_formed_ds_in_trace
       (t : trace)
       (OP : op_sem st t)
       (s : subst)
-      (cs : constraint_store s)
+      (cs : constraint_store)
       (n : nat)
       (IS_ANS: in_stream (Answer s cs n) t)
       (f f' : repr_fun)
@@ -650,6 +854,47 @@ Proof.
     apply IHIS_ANS with st0; auto.
     eapply well_formedness_preservation; eauto. }
 Qed.
+
+Lemma narrowing_subst_in_trace
+      (st : state)
+      (WF : well_formed_state st)
+      (t : trace)
+      (OP : op_sem st t)
+      (s : subst)
+      (cs : constraint_store)
+      (n : nat)
+      (IS_ANS: in_stream (Answer s cs n) t) :
+      narrowing_subst s.
+Proof.
+  remember (Answer s cs n). revert WF OP. revert st.
+  induction IS_ANS; intros.
+  { good_inversion OP. good_inversion WF.
+    eapply narrowing_subst_in_answer; eauto. }
+  { good_inversion OP. good_inversion WF.
+    apply IHIS_ANS with st0; auto.
+    eapply well_formedness_preservation; eauto. }
+Qed.
+
+Lemma wf_cs_in_trace
+      (st : state)
+      (WF : well_formed_state st)
+      (t : trace)
+      (OP : op_sem st t)
+      (s : subst)
+      (cs : constraint_store)
+      (n : nat)
+      (IS_ANS: in_stream (Answer s cs n) t) :
+      wf_cs s cs.
+Proof.
+  remember (Answer s cs n). revert WF OP. revert st.
+  induction IS_ANS; intros.
+  { good_inversion OP. good_inversion WF.
+    eapply wf_cs_in_answer; eauto. }
+  { good_inversion OP. good_inversion WF.
+    apply IHIS_ANS with st0; auto.
+    eapply well_formedness_preservation; eauto. }
+Qed.
+
 
 Lemma sum_op_sem
       (st'1 st'2 : state')
@@ -674,7 +919,7 @@ Lemma prod_op_sem_in
       (st' : state')
       (g : goal)
       (s : subst)
-      (cs : constraint_store s)
+      (cs : constraint_store)
       (n : nat)
       (t1 t2 t : trace)
       (r : label)
@@ -689,7 +934,7 @@ Proof.
   induction IN_1; intros; subst.
   { good_inversion OP1. good_inversion OP.
     good_inversion EV0; specialize (eval_step_unique _ _ _ _ _ EV STEP_L);
-    intro eqs; destruct eqs; subst; good_inversion H; simpl_existT_cs_same.
+    intro eqs; destruct eqs; subst; good_inversion H.
     { constructor. specialize (op_sem_unique _ _ _ OP2 OP1).
       intros. eapply in_equal_streams; eauto. }
     { constructor. specialize (op_sem_exists (State (Leaf g s0 cs0 n0))).

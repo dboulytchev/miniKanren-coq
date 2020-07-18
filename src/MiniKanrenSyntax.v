@@ -41,7 +41,7 @@ Inductive is_fv_of_goal (n : name) : goal -> Prop :=
 | fvInvoke : forall r arg (IN_FV : In n (fv_term arg)),
                           is_fv_of_goal n (Invoke r arg).
 
-Hint Constructors is_fv_of_goal.
+Hint Constructors is_fv_of_goal : core.
 
 Definition closed_goal_in_context (c : list name) (g : goal) : Prop :=
   forall n, is_fv_of_goal n g -> In n c.
@@ -124,7 +124,7 @@ Inductive renaming (old_x : name) (new_x : name) : goal -> goal -> Prop :=
 | rInvoke : forall r arg, renaming old_x new_x (Invoke r arg)
                                                (Invoke r (apply_subst [(old_x, Var new_x)] arg)).
 
-Hint Constructors renaming.
+Hint Constructors renaming : core.
 
 Definition consistent_binding (b : name -> goal) : Prop :=
   forall x y, (~ is_fv_of_goal x (Fresh b)) -> renaming x y (b x) (b y).
@@ -145,7 +145,7 @@ Inductive consistent_goal : goal -> Prop :=
                        consistent_goal (Fresh fg)
 | cgInvoke : forall r arg, consistent_goal (Invoke r arg).
 
-Hint Constructors consistent_goal.
+Hint Constructors consistent_goal : core.
 
 Definition consistent_function (f : term -> goal) : Prop :=
   forall a1 a2 t, renaming a1 a2 (f t) (f (apply_subst [(a1, Var a2)] t)).
@@ -157,4 +157,4 @@ Definition def : Set := {r : rel | closed_rel r /\ consistent_rel r}.
 
 Definition spec : Set := name -> def.
 
-Variable Prog : spec.
+Axiom Prog : spec.
