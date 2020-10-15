@@ -113,7 +113,7 @@ Inductive label : Set :=
 
 (* Transitions *)
 Inductive eval_step : nt_state -> label -> state -> Prop :=
-| esFail    : forall s n, eval_step (Leaf Fail s n) Step Stop
+| esFail         : forall s n, eval_step (Leaf Fail s n) Step Stop
 | esUnifyFail    : forall t1 t2 s   n (MGU : mgu (apply_subst s t1) (apply_subst s t2) None),
                                       eval_step (Leaf (Unify t1 t2) s n) Step Stop
 | esUnifySuccess : forall t1 t2 s d n (MGU : mgu (apply_subst s t1) (apply_subst s t2) (Some d)),
