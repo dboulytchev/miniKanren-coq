@@ -7,8 +7,9 @@ The folder 'src' contains the specification of the semantics and all the proofs 
 - The subfolder 'src/Preliminaries' contains the specification of premilinary notions used in the semantics:
     - Unification.v -- notions from unification theory (terms, substitutions, computation of the most general unifier)
     - Streams.v -- (possibly infinite) streams and their properties 
-- The subfolder 'src/InterleavingSearch' contains the specification of syntax and semantics of miniKanren language with canonical interleaving search:
+- The subfolder 'src/Syntax' contains the specification of syntax of conventional miniKanren:
     - Language.v -- base language ('Prog' axiom here is an arbitrary correct program)
+- The subfolder 'src/InterleavingSearch' contains the specification of syntax and semantics of miniKanren language with canonical interleaving search:
     - DenotationalSem.v -- denotational semantics
     - OperationalSem.v -- operational semantics for interleaving search
     - Soundness.v -- soundness of interleaving search
@@ -18,7 +19,9 @@ The folder 'src' contains the specification of the semantics and all the proofs 
     - DenotationalSemSLD.v -- denotational semantics
     - OperationalSemSLD.v -- operational semantics for SLD resolution with cuts
     - SoundnessSLD.v -- soundness of SLD resolution with cuts
-
+- The subfolder 'src/FairConjunction' contains the specification of semantics for fair conjunction:
+    - AngelicSemantics.c -- angelic semantics
+    
 The folder 'extracted' contains reference interpreters extracted from the Coq specification:
 
 - interleaving_interpreter.hs -- the code extracted from interleaving search semantics (from src/InterleavingSearch/OperationalSem.v)
